@@ -12,7 +12,7 @@ import {
 import { readFileSync, writeFileSync } from "fs";
 import { signTransaction } from "./transaction-utils";
 import { ec } from "elliptic";
-import {Participant, ParticipantKey} from "./types";
+import { Participant, ParticipantKey } from "./types";
 import { v4 } from "uuid";
 import { generateParticipantKey } from "./key-generator";
 
@@ -28,39 +28,32 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    "participant <first> <last> <email> <phone>",
+    "add-participant <name>",
     "create a todd-coin participant",
     () => {},
     (args) => {
-      const participantsBefore = JSON.parse(
-        readFileSync("participants.json").toString()
+      const toddCoinBefore = JSON.parse(
+        readFileSync("todd-coin.json").toString()
       );
-      const first = args.first as string;
-      const last = args.last as string;
-      const email = args.email as string;
-      const phone = args.phone as string;
+      const name = args.name as string;
       const participantKey = generateParticipantKey();
       const newParticipant: Participant = {
         id: v4(),
-        first,
-        last,
-        email,
-        phone,
+        name,
         key: { public: participantKey.public },
       };
-      const participantsAfter = {
-        ...participantsBefore,
-        participants: participantsBefore.participants.concat(newParticipant),
+      const toddCoinAfter = {
+        ...toddCoinBefore,
+        participants: toddCoinBefore.participants.concat(newParticipant),
       };
-      writeFileSync(
-        "participants.json",
-        JSON.stringify(participantsAfter, null, 2)
+      writeFileSync("todd-coin.json", JSON.stringify(toddCoinAfter, null, 2));
+      console.log(
+        `Done! The new participant private key is: ${participantKey.private}`
       );
-      console.log(`Done! The new participant private key is: ${participantKey.private}`);
     }
   )
   .command(
-    "add <fromPrivateKey> <fromPublicKey> <toPublicKey> <amount> <description>",
+    "add-transaction <fromPrivateKey> <fromPublicKey> <toPublicKey> <amount> <description>",
     "add a transaction to todd-coin",
     () => {},
     (args) => {
@@ -123,7 +116,7 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    "balance <publicKey>",
+    "get-balance <publicKey>",
     "get todd-coin participant balance",
     () => {},
     (args) => {

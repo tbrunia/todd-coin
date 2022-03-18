@@ -6,10 +6,17 @@ import { isTransactionValid } from "./transaction-utils";
 const GENESIS_DATE = "2022-03-14T13:39:00.000Z";
 const GENESIS_HASH =
   "0000000000000000000000000000000000000000000000000000000000000000";
-const GENESIS_TO = "049976c498d31064539767b4ca5e7383e9c2d1f9305bccdcd476e0e8c24872dfa7d1940bf433d6a431c23813594882126d49b21ebadd1fe00ef50dd8262000d73b";
+const GENESIS_PARTICIPANT = {
+  id: "0dd9bf1d-544c-4d9a-beb3-8bc0d8024db4",
+  name: "Todd",
+  key: {
+    public:
+      "049976c498d31064539767b4ca5e7383e9c2d1f9305bccdcd476e0e8c24872dfa7d1940bf433d6a431c23813594882126d49b21ebadd1fe00ef50dd8262000d73b",
+  },
+};
 const GENESIS_TRANSACTIONS = [
   {
-    to: GENESIS_TO,
+    to: GENESIS_PARTICIPANT.key.public,
     amount: GENESIS_REWARD,
     description: "Initial set up reward",
   },
@@ -33,6 +40,7 @@ export const initBlockchain = (): Blockchain => {
   return {
     chain: [createGenesisBlock()],
     pendingTransactions: [],
+    participants: [GENESIS_PARTICIPANT],
     difficulty: DIFFICULTY,
     miningReward: MINING_REWARD,
   };

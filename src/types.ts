@@ -1,3 +1,14 @@
+export interface ParticipantKey {
+  public: string;
+  private?: string;
+}
+
+export interface Participant {
+  id: string;
+  name: string;
+  key: ParticipantKey;
+}
+
 export interface Transaction {
   from?: string;
   to: string;
@@ -17,20 +28,7 @@ export interface Block {
 export interface Blockchain {
   chain: Block[];
   pendingTransactions: Transaction[];
+  participants: Participant[];
   difficulty: number;
   miningReward: number;
-}
-
-export interface ParticipantKey {
-  public: string;
-  private?: string;
-}
-
-export interface Participant {
-  id: string;
-  first: string;
-  last: string;
-  email: string;
-  phone: string;
-  key: ParticipantKey;
 }
