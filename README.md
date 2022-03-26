@@ -8,10 +8,24 @@
 
 `npm run build`
 
-## To Install Locally
+## To Watch
+
+Hot rebuild when `src` changes
+
+`npm run watch`
+
+## To Install todd-coin CLI Locally
 
 `npm install -g .`
 
-## To See Commands and Options
+## To See todd-coin CLI Commands and Options
 
-`todd-coin`
+`npm run build && todd-coin`
+
+## To Run the todd-coin Node locally
+
+`npm run build && npm run start`
+
+or
+
+`npm run watch`

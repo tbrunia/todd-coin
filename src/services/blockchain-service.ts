@@ -1,14 +1,19 @@
-import { Block, Blockchain, Transaction } from "./types";
-import { calculateHash, hasValidTransactions, mineBlock } from "./block-utils";
-import { DIFFICULTY, GENESIS_REWARD, MINING_REWARD } from "./constants";
-import { isTransactionValid } from "./transaction-utils";
+import { Block, Blockchain, Transaction } from "../types";
+import {
+  calculateHash,
+  hasValidTransactions,
+  mineBlock,
+} from "./block-service";
+import { DIFFICULTY, GENESIS_REWARD, MINING_REWARD } from "../constants";
+import { isTransactionValid } from "./transaction-service";
+import { v4 } from "uuid";
 
 const GENESIS_DATE = "2022-03-14T13:39:00.000Z";
 const GENESIS_HASH =
   "0000000000000000000000000000000000000000000000000000000000000000";
 const GENESIS_PARTICIPANT = {
   id: "0dd9bf1d-544c-4d9a-beb3-8bc0d8024db4",
-  name: "Todd",
+  firstName: "Todd",
   key: {
     public:
       "049976c498d31064539767b4ca5e7383e9c2d1f9305bccdcd476e0e8c24872dfa7d1940bf433d6a431c23813594882126d49b21ebadd1fe00ef50dd8262000d73b",
@@ -16,6 +21,7 @@ const GENESIS_PARTICIPANT = {
 };
 const GENESIS_TRANSACTIONS = [
   {
+    id: v4(),
     to: GENESIS_PARTICIPANT.key.public,
     amount: GENESIS_REWARD,
     description: "Initial set up reward",
@@ -24,6 +30,7 @@ const GENESIS_TRANSACTIONS = [
 const GENESIS_NONCE = 0;
 
 export const createGenesisBlock = (): Block => ({
+  id: v4(),
   timestamp: GENESIS_DATE,
   transactions: GENESIS_TRANSACTIONS,
   nonce: GENESIS_NONCE,
@@ -82,6 +89,7 @@ export const minePendingTransactions = (
     ...blockchain,
     pendingTransactions: [
       {
+        id: v4(),
         to: miner,
         amount: blockchain.miningReward,
         description: "Mining reward",

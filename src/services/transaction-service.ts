@@ -1,4 +1,4 @@
-import { Transaction } from "./types";
+import { Transaction } from "../types";
 import { ec } from "elliptic";
 
 const client: ec = new ec("secp256k1");

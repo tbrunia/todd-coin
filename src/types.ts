@@ -5,11 +5,15 @@ export interface ParticipantKey {
 
 export interface Participant {
   id: string;
-  name: string;
+  firstName: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
   key: ParticipantKey;
 }
 
 export interface Transaction {
+  id: string;
   from?: string;
   to: string;
   amount: number;
@@ -18,6 +22,7 @@ export interface Transaction {
 }
 
 export interface Block {
+  id: string;
   timestamp: string;
   transactions: Transaction[];
   nonce: number;

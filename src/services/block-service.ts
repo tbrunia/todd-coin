@@ -1,7 +1,8 @@
-import { Block, Blockchain, Transaction } from "./types";
-import { getLatestBlock } from "./blockchain-utils";
-import { DIFFICULTY } from "./constants";
-import { isTransactionValid } from "./transaction-utils";
+import { Block, Blockchain, Transaction } from "../types";
+import { getLatestBlock } from "./blockchain-service";
+import { DIFFICULTY } from "../constants";
+import { isTransactionValid } from "./transaction-service";
+import { v4 } from "uuid";
 
 const SHA256 = require("crypto-js/sha256");
 
@@ -38,6 +39,7 @@ export const mineBlock = (
   }
 
   return {
+    id: v4(),
     timestamp,
     transactions,
     nonce,

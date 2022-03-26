@@ -1,5 +1,5 @@
 import { ec } from "elliptic";
-import { ParticipantKey } from "./types";
+import { ParticipantKey } from "../types";
 
 export const generateParticipantKey = (): ParticipantKey => {
   const client: ec = new ec("secp256k1");

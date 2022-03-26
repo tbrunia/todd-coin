@@ -8,13 +8,13 @@ import {
   initBlockchain,
   isChainValid,
   minePendingTransactions,
-} from "./blockchain-utils";
+} from "./services/blockchain-service";
 import { readFileSync, writeFileSync } from "fs";
-import { signTransaction } from "./transaction-utils";
+import { signTransaction } from "./services/transaction-service";
 import { ec } from "elliptic";
-import { Participant, ParticipantKey } from "./types";
+import { Participant } from "./types";
 import { v4 } from "uuid";
-import { generateParticipantKey } from "./key-generator";
+import { generateParticipantKey } from "./services/key-generator";
 
 yargs(hideBin(process.argv))
   .command(
@@ -39,7 +39,7 @@ yargs(hideBin(process.argv))
       const participantKey = generateParticipantKey();
       const newParticipant: Participant = {
         id: v4(),
-        name,
+        firstName: name,
         key: { public: participantKey.public },
       };
       const toddCoinAfter = {
@@ -70,6 +70,7 @@ yargs(hideBin(process.argv))
         toddCoinBefore,
         signTransaction(
           {
+            id: v4(),
             from: fromPublicKey,
             to: toPublicKey,
             amount: amount,
