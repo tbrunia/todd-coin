@@ -18,6 +18,8 @@ const HOST = "localhost";
 
 // todo - authentication and authorization?
 // todo - dockerize the container
+// todo - unit tests
+// todo - mobile app
 
 export let server: Server;
 
