@@ -3,113 +3,117 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import {
-  addTransaction,
   getParticipantBalance,
-  initBlockchain,
   isChainValid,
-  minePendingTransactions,
 } from "./services/blockchain-service";
-import { readFileSync, writeFileSync } from "fs";
 import { signTransaction } from "./services/transaction-service";
-import { ec } from "elliptic";
-import { Participant } from "./types";
-import { v4 } from "uuid";
-import { generateParticipantKey } from "./services/key-generator";
+import { ApiData, Block, Participant, Transaction } from "./types";
+import { mineNextBlock } from "./services/block-service";
+import axios, { AxiosResponse } from "axios";
+import _ from "lodash";
+
+const getBlocks = async (): Promise<Block[]> => {
+  const blocksResponse: AxiosResponse<{
+    data: ApiData[];
+  }> = await axios.get(`http://localhost:3000/blocks`);
+  return (await Promise.all(
+    blocksResponse.data.data.map(async (blockData: ApiData) => {
+      const transactionsResponse: AxiosResponse<{
+        data: ApiData[];
+      }> = await axios.get(
+        `http://localhost:3000/blocks/${blockData.id}/transactions`
+      );
+      const transactions = transactionsResponse.data.data.map(
+        (transactionData: ApiData) => ({
+          id: transactionData.id,
+          ...transactionData.attributes,
+        })
+      ) as Transaction[];
+
+      return {
+        id: blockData.id,
+        transactions,
+        ...blockData.attributes,
+      };
+    })
+  )) as Block[];
+};
+
+const getParticipantById = async (
+  participantId: string
+): Promise<Participant> => {
+  const participantResponse: AxiosResponse<{ data: ApiData }> = await axios.get(
+    `http://localhost:3000/participants/${participantId}`
+  );
+  return {
+    id: participantResponse.data.data.id,
+    ...participantResponse.data.data.attributes,
+  } as Participant;
+};
+
+const getSignedTransactions = async (): Promise<Transaction[]> => {
+  const signedTransactionsResponse: AxiosResponse<{
+    data: ApiData[];
+  }> = await axios.get(`http://localhost:3000/signed-transactions`);
+  return signedTransactionsResponse.data.data.map((data: ApiData) => ({
+    id: data.id,
+    ...data.attributes,
+  })) as Transaction[];
+};
+
+const getPendingTransactionById = async (
+  pendingTransactionId: string
+): Promise<Transaction> => {
+  const pendingTransactionResponse = await axios.get(
+    `http://localhost:3000/pending-transactions/${pendingTransactionId}`
+  );
+  return {
+    id: pendingTransactionResponse.data.data.id,
+    ...pendingTransactionResponse.data.data.attributes,
+  };
+};
 
 yargs(hideBin(process.argv))
   .command(
-    "init",
-    "initialize todd-coin",
+    "sign-pending-transaction <privateKey> <pendingTransactionId>",
+    "sign a pending todd-coin transaction",
     () => {},
-    () => {
-      const toddCoin = initBlockchain();
-      writeFileSync("todd-coin.json", JSON.stringify(toddCoin, null, 2));
-      console.log("Done!");
+    async (args) => {
+      const privateKey = args.privateKey as string;
+      const pendingTransactionId = args.pendingTransactionId as string;
+      const pendingTransaction: Transaction = await getPendingTransactionById(
+        pendingTransactionId
+      );
+      const signedTransaction: Transaction = signTransaction(pendingTransaction, privateKey);
+
+      console.log(JSON.stringify(signedTransaction, null, 2));
     }
   )
   .command(
-    "add-participant <name>",
-    "create a todd-coin participant",
+    "mine",
+    "mine next todd-coin block",
     () => {},
-    (args) => {
-      const toddCoinBefore = JSON.parse(
-        readFileSync("todd-coin.json").toString()
+    async (args) => {
+      const latestBlock: Block = _.last(await getBlocks());
+      const signedTransactions: Transaction[] = await getSignedTransactions();
+      const newBlock: Block = mineNextBlock(
+        latestBlock,
+        new Date().toISOString(),
+        signedTransactions
       );
-      const name = args.name as string;
-      const participantKey = generateParticipantKey();
-      const newParticipant: Participant = {
-        id: v4(),
-        firstName: name,
-        key: { public: participantKey.public },
-      };
-      const toddCoinAfter = {
-        ...toddCoinBefore,
-        participants: toddCoinBefore.participants.concat(newParticipant),
-      };
-      writeFileSync("todd-coin.json", JSON.stringify(toddCoinAfter, null, 2));
-      console.log(
-        `Done! The new participant private key is: ${participantKey.private}`
-      );
-    }
-  )
-  .command(
-    "add-transaction <fromPrivateKey> <fromPublicKey> <toPublicKey> <amount> <description>",
-    "add a transaction to todd-coin",
-    () => {},
-    (args) => {
-      const toddCoinBefore = JSON.parse(
-        readFileSync("todd-coin.json").toString()
-      );
-      const client: ec = new ec("secp256k1");
-      const fromPrivateKey = args.fromPrivateKey as string;
-      const fromPublicKey = args.fromPublicKey as string;
-      const toPublicKey = args.toPublicKey as string;
-      const amount = args.amount as number;
-      const description = args.description as string;
-      const toddCoinAfter = addTransaction(
-        toddCoinBefore,
-        signTransaction(
-          {
-            id: v4(),
-            from: fromPublicKey,
-            to: toPublicKey,
-            amount: amount,
-            description: description,
-          },
-          client.keyFromPrivate(fromPrivateKey)
-        )
-      );
-      writeFileSync("todd-coin.json", JSON.stringify(toddCoinAfter, null, 2));
-      console.log("Done!");
-    }
-  )
-  .command(
-    "mine <publicKey>",
-    "mine pending todd-coin transactions",
-    () => {},
-    (args) => {
-      const toddCoinPreMine = JSON.parse(
-        readFileSync("todd-coin.json").toString()
-      );
-      const publicKey = args.publicKey as string;
-      const toddCoinPostMine = minePendingTransactions(
-        toddCoinPreMine,
-        publicKey
-      );
-      writeFileSync(
-        "todd-coin.json",
-        JSON.stringify(toddCoinPostMine, null, 2)
-      );
-      console.log("Done!");
+
+      console.log(JSON.stringify(newBlock, null, 2));
     }
   )
   .command(
     "validate",
-    "validate todd-coin file",
+    "validate todd-coin",
     () => {},
-    () => {
-      const toddCoin = JSON.parse(readFileSync("todd-coin.json").toString());
-      if (isChainValid(toddCoin)) {
+    async () => {
+      const blocks: Block[] = await getBlocks();
+      const isValid: boolean = isChainValid(blocks);
+
+      if (isValid) {
         console.log("Looks good!");
       } else {
         console.log("Something's not right.");
@@ -117,13 +121,18 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    "get-balance <publicKey>",
+    "get-balance <participantId>",
     "get todd-coin participant balance",
     () => {},
-    (args) => {
-      const toddCoin = JSON.parse(readFileSync("todd-coin.json").toString());
-      const publicKey = args.publicKey as string;
-      const balance = getParticipantBalance(toddCoin, publicKey);
+    async (args) => {
+      const participantId = args.participantId as string;
+      const participant: Participant = await getParticipantById(participantId);
+      const blocks: Block[] = await getBlocks();
+      const balance: number = getParticipantBalance(
+        blocks,
+        participant.key.public
+      );
+
       console.log(`balance: ${balance}`);
     }
   )

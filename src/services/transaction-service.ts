@@ -4,45 +4,55 @@ import { ec } from "elliptic";
 const client: ec = new ec("secp256k1");
 const SHA256 = require("crypto-js/sha256");
 
-const calculateHash = (transaction: Transaction): string => {
+const calculateTransactionHash = (transaction: Transaction): string => {
   return SHA256(
     transaction.from +
       transaction.to +
       transaction.amount +
-      transaction.description
+      transaction.description +
+      transaction.createdAt
   ).toString();
 };
 
 export const signTransaction = (
-  transaction: Transaction,
-  signingKey: ec.KeyPair
+  pendingTransaction: Transaction,
+  privateKey: string
 ): Transaction => {
-  if (signingKey.getPublic("hex") !== transaction.from) {
+  const signingKey: ec.KeyPair = client.keyFromPrivate(privateKey);
+  if (signingKey.getPublic("hex") !== pendingTransaction.from) {
     throw new Error("You cannot sign transaction.");
   }
 
-  const hash = calculateHash(transaction);
-  const signature = signingKey.sign(hash, "base64");
+  const transactionHash = calculateTransactionHash(pendingTransaction);
+  const signature = signingKey.sign(transactionHash, "base64");
 
   return {
-    ...transaction,
+    id: pendingTransaction.id,
+    createdAt: pendingTransaction.createdAt,
+    from: pendingTransaction.from,
+    to: pendingTransaction.to,
+    amount: pendingTransaction.amount,
+    description: pendingTransaction.description,
     signature: signature.toDER("hex"),
   };
 };
 
-export const isTransactionValid = (transaction: Transaction) => {
-  if (transaction.from === undefined) {
+export const isSignedTransactionValid = (signedTransaction: Transaction) => {
+  if (signedTransaction.from === undefined) {
     return true;
   }
 
   if (
-    transaction.signature === undefined ||
-    transaction.signature.length === 0
+    signedTransaction.signature === undefined ||
+    signedTransaction.signature.length === 0
   ) {
-    throw new Error("No signature in this transaction");
+    throw new Error("No signature in this signed transaction");
   }
 
-  const publicKey = client.keyFromPublic(transaction.from, "hex");
+  const publicKey = client.keyFromPublic(signedTransaction.from, "hex");
 
-  return publicKey.verify(calculateHash(transaction), transaction.signature);
+  return publicKey.verify(
+    calculateTransactionHash(signedTransaction),
+    signedTransaction.signature
+  );
 };

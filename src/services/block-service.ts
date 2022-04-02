@@ -1,56 +1,65 @@
 import { Block, Blockchain, Transaction } from "../types";
 import { getLatestBlock } from "./blockchain-service";
 import { DIFFICULTY } from "../constants";
-import { isTransactionValid } from "./transaction-service";
+import { isSignedTransactionValid } from "./transaction-service";
 import { v4 } from "uuid";
 
 const SHA256 = require("crypto-js/sha256");
 
-export const calculateHash = (
-  timestamp: string,
+export const calculateBlockHash = (
+  createdAt: string,
   previousHash: string,
   nonce: number,
-  transactions: Transaction[]
+  signedTransactions: Transaction[]
 ): string => {
-  const parts = previousHash + timestamp + nonce + JSON.stringify(transactions);
+  const parts =
+    previousHash + createdAt + nonce + JSON.stringify(signedTransactions);
 
   return SHA256(parts).toString();
 };
 
-export const mineBlock = (
-  blockchain: Blockchain,
-  timestamp: string,
-  transactions: Transaction[]
+export const mineNextBlock = (
+  latestBlock: Block,
+  createdAt: string,
+  signedTransactions: Transaction[]
 ): Block => {
-  const latestBlock = getLatestBlock(blockchain);
-
   let nonce = 0;
-  let tempHash = calculateHash(
-    timestamp,
+  let tempHash = calculateBlockHash(
+    createdAt,
     latestBlock.hash,
     nonce,
-    transactions
+    signedTransactions
   );
   const leadingZeros = Array(DIFFICULTY + 1).join("0");
 
   while (tempHash.substring(0, DIFFICULTY) !== leadingZeros) {
-    tempHash = calculateHash(timestamp, latestBlock.hash, nonce, transactions);
+    tempHash = calculateBlockHash(
+      createdAt,
+      latestBlock.hash,
+      nonce,
+      signedTransactions
+    );
     nonce = nonce + 1;
   }
 
   return {
     id: v4(),
-    timestamp,
-    transactions,
+    createdAt,
+    transactions: signedTransactions,
     nonce,
     previousHash: latestBlock.hash,
-    hash: calculateHash(timestamp, latestBlock.hash, nonce, transactions),
+    hash: calculateBlockHash(
+      createdAt,
+      latestBlock.hash,
+      nonce,
+      signedTransactions
+    ),
   };
 };
 
 export const hasValidTransactions = (block: Block): boolean => {
   for (const transaction of block.transactions) {
-    if (!isTransactionValid(transaction)) {
+    if (!isSignedTransactionValid(transaction)) {
       return false;
     }
   }
