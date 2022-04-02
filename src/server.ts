@@ -17,7 +17,7 @@ const PORT = 3000;
 const HOST = "localhost";
 
 // todo - authentication and authorization?
-// todo - dockerize the container
+// todo - dockerize the server
 // todo - unit tests
 // todo - mobile app
 
