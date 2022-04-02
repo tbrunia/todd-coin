@@ -387,6 +387,7 @@ const buildNodesSerializer = (
 };
 
 export const init = async (): Promise<Server> => {
+  // todo - hide db secrets
   const sequelize = new Sequelize("todd-coin", "postgres", "secret", {
     host: "localhost",
     dialect: "postgres",
