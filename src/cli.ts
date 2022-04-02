@@ -73,6 +73,12 @@ const getPendingTransactionById = async (
   };
 };
 
+// todo other operations...
+// 1. add pending transaction
+// 2. view my pending transactions for signing
+
+// todo make the host a variable
+
 yargs(hideBin(process.argv))
   .command(
     "sign-pending-transaction <privateKey> <pendingTransactionId>",

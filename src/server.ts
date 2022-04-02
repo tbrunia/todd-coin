@@ -16,6 +16,9 @@ const PROTOCOL = "http";
 const PORT = 3000;
 const HOST = "localhost";
 
+// todo - authentication and authorization?
+// todo - dockerize the container
+
 export let server: Server;
 
 const buildBlockSerializer = (): Serializer<Block> => {

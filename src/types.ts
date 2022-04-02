@@ -3,6 +3,7 @@ export interface ParticipantKey {
   private?: string;
 }
 
+// todo - add roles (charity or volunteer) to participants
 export interface Participant {
   id?: string;
   createdAt?: string;
