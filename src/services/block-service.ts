@@ -1,5 +1,4 @@
-import { Block, Blockchain, Transaction } from "../types";
-import { getLatestBlock } from "./blockchain-service";
+import { Block, Transaction } from "../types";
 import { DIFFICULTY } from "../constants";
 import { isSignedTransactionValid } from "./transaction-service";
 import { v4 } from "uuid";

@@ -84,7 +84,10 @@ yargs(hideBin(process.argv))
       const pendingTransaction: Transaction = await getPendingTransactionById(
         pendingTransactionId
       );
-      const signedTransaction: Transaction = signTransaction(pendingTransaction, privateKey);
+      const signedTransaction: Transaction = signTransaction(
+        pendingTransaction,
+        privateKey
+      );
 
       console.log(JSON.stringify(signedTransaction, null, 2));
     }

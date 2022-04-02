@@ -1,7 +1,6 @@
 "use strict";
 
-import { readFileSync, writeFileSync } from "fs";
-import { Block, Blockchain, Node, Participant, Transaction } from "./types";
+import { Block, Node, Participant, Transaction } from "./types";
 import * as Hapi from "@hapi/hapi";
 import { Request, ResponseToolkit, Server } from "@hapi/hapi";
 import * as Boom from "@hapi/boom";

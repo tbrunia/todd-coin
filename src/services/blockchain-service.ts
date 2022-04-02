@@ -1,9 +1,6 @@
 import { Block, Blockchain, Transaction } from "../types";
-import {
-  calculateBlockHash,
-  hasValidTransactions,
-} from "./block-service";
-import { DIFFICULTY, GENESIS_REWARD, MINING_REWARD } from "../constants";
+import { calculateBlockHash, hasValidTransactions } from "./block-service";
+import { GENESIS_REWARD } from "../constants";
 
 const GENESIS_DATE = "2022-03-14T13:39:00.000Z";
 const GENESIS_HASH =
