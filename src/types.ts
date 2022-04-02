@@ -54,5 +54,5 @@ export interface Blockchain {
 
 export interface ApiData {
   id: string;
-  attributes: Record<string, string | number>;
+  attributes: Record<string, string | number | boolean | object>;
 }
