@@ -20,6 +20,8 @@ const HOST = "localhost";
 // todo - dockerize the server
 // todo - unit tests
 // todo - mobile app
+// todo - implement GET: /blocks/{blockId}/transactions/{transactionId} endpoint
+// todo - paginating
 
 export let server: Server;
 
