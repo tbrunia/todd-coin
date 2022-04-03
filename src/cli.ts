@@ -5,10 +5,10 @@ import { hideBin } from "yargs/helpers";
 import {
   getParticipantBalance,
   isChainValid,
-} from "./services/blockchain-service";
-import { signTransaction } from "./services/transaction-service";
+} from "./services/blockchain-utils";
+import { signTransaction } from "./services/transaction-utils";
 import { ApiData, Block, Participant, Transaction } from "./types";
-import { mineNextBlock } from "./services/block-service";
+import { mineNextBlock } from "./services/block-utils";
 import axios, { AxiosResponse } from "axios";
 import _ from "lodash";
 

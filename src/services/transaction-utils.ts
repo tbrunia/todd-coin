@@ -4,14 +4,11 @@ import { ec } from "elliptic";
 const client: ec = new ec("secp256k1");
 const SHA256 = require("crypto-js/sha256");
 
-const calculateTransactionHash = (transaction: Transaction): string => {
-  return SHA256(
-    transaction.from +
-      transaction.to +
-      transaction.amount +
-      transaction.description +
-      transaction.createdAt
-  ).toString();
+export const calculateTransactionHash = (transaction: Transaction): string => {
+  const { id, from, to, amount, description } = transaction;
+  const parts = id + from + to + amount + description;
+
+  return SHA256(parts).toString();
 };
 
 export const signTransaction = (
