@@ -32,17 +32,26 @@ export const getParticipantById = async (
 };
 
 export const getParticipants = async (
-  sequelizeClient: SequelizeClient
-): Promise<Participant[]> => {
+  sequelizeClient: SequelizeClient,
+  pageNumber: number,
+  pageSize: number
+): Promise<{ count: number; rows: Participant[] }> => {
   const participantModel = sequelizeClient.getParticipantModel();
 
-  const models = await participantModel.findAll();
-
-  return models.map((model: Model) => {
-    const dbParticipant = model.get();
-
-    return map(dbParticipant);
+  const { count, rows } = await participantModel.findAndCountAll({
+    offset: pageNumber * pageSize,
+    order: [["createdAt", "ASC"]],
+    limit: pageSize,
   });
+
+  return {
+    count,
+    rows: rows.map((model: Model) => {
+      const dbParticipant = model.get();
+
+      return map(dbParticipant);
+    }),
+  };
 };
 
 export const createParticipant = async (

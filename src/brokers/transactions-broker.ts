@@ -78,59 +78,83 @@ export const getBlockTransactionById = async (
 };
 
 export const getPendingTransactions = async (
-  sequelizeClient: SequelizeClient
-): Promise<Transaction[]> => {
+  sequelizeClient: SequelizeClient,
+  pageNumber: number,
+  pageSize: number
+): Promise<{ count: number; rows: Transaction[] }> => {
   const transactionModel = sequelizeClient.getTransactionModel();
 
-  const models = await transactionModel.findAll({
+  const { count, rows } = await transactionModel.findAndCountAll({
     where: {
       type: "pending",
     },
+    offset: pageNumber * pageSize,
+    order: [["createdAt", "ASC"]],
+    limit: pageSize,
   });
 
-  return models.map((model) => {
-    const dbTransaction = model.get();
+  return {
+    count,
+    rows: rows.map((model) => {
+      const dbTransaction = model.get();
 
-    return map(dbTransaction);
-  });
+      return map(dbTransaction);
+    }),
+  };
 };
 
 export const getSignedTransactions = async (
-  sequelizeClient: SequelizeClient
-): Promise<Transaction[]> => {
+  sequelizeClient: SequelizeClient,
+  pageNumber: number,
+  pageSize: number
+): Promise<{ count: number; rows: Transaction[] }> => {
   const transactionModel = sequelizeClient.getTransactionModel();
 
-  const models = await transactionModel.findAll({
+  const { count, rows } = await transactionModel.findAndCountAll({
     where: {
       type: "signed",
     },
+    offset: pageNumber * pageSize,
+    order: [["createdAt", "ASC"]],
+    limit: pageSize,
   });
 
-  return models.map((model) => {
-    const dbTransaction = model.get();
+  return {
+    count,
+    rows: rows.map((model) => {
+      const dbTransaction = model.get();
 
-    return map(dbTransaction);
-  });
+      return map(dbTransaction);
+    }),
+  };
 };
 
 export const getBlockTransactions = async (
   sequelizeClient: SequelizeClient,
-  blockId: string
-): Promise<Transaction[]> => {
+  blockId: string,
+  pageNumber: number,
+  pageSize: number
+): Promise<{ count: number; rows: Transaction[] }> => {
   const transactionModel = sequelizeClient.getTransactionModel();
 
-  const models = await transactionModel.findAll({
+  const { count, rows } = await transactionModel.findAndCountAll({
     where: {
       type: "block",
       blockId,
     },
+    offset: pageNumber * pageSize,
+    order: [["createdAt", "ASC"]],
+    limit: pageSize,
   });
 
-  return models.map((model) => {
-    const dbTransaction = model.get();
+  return {
+    count,
+    rows: rows.map((model) => {
+      const dbTransaction = model.get();
 
-    return map(dbTransaction);
-  });
+      return map(dbTransaction);
+    }),
+  };
 };
 
 export const createPendingTransaction = async (

@@ -1,7 +1,14 @@
-import { Linker, Paginator, Relator, Serializer } from "ts-japi";
+import { Linker, Metaizer, Paginator, Relator, Serializer } from "ts-japi";
 import { Block, Node, Participant, Transaction } from "../types";
 import _ from "lodash";
-import { HOST, PORT, PROTOCOL } from "../constants";
+import {
+  DEFAULT_PAGE_SIZE,
+  FIRST_PAGE,
+  HOST,
+  MAX_TRANSACTIONS_PER_BLOCK,
+  PORT,
+  PROTOCOL,
+} from "../constants";
 
 export const buildBlockSerializer = (): Serializer<Block> => {
   return new Serializer<Block>("block", {
@@ -18,7 +25,7 @@ export const buildBlockSerializer = (): Serializer<Block> => {
         {
           linkers: {
             related: new Linker<[Block]>((block: Block) => {
-              return `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=0&page[size]=10`;
+              return `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=${FIRST_PAGE}&page[size]=${DEFAULT_PAGE_SIZE}`;
             }),
           },
         }
@@ -36,11 +43,12 @@ export const buildBlockSerializer = (): Serializer<Block> => {
 };
 
 export const buildBlocksSerializer = (
-  firstPage: number,
-  lastPage: number,
-  currentPage: number,
+  count: number,
+  pageNumber: number,
   pageSize: number
 ): Serializer<Block> => {
+  const pages = Math.ceil(count / pageSize);
+
   return new Serializer<Block>("block", {
     nullData: false,
     projection: {
@@ -55,7 +63,7 @@ export const buildBlocksSerializer = (
         {
           linkers: {
             related: new Linker<[Block]>((block: Block) => {
-              return `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=0&page[size]=10`;
+              return `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=${FIRST_PAGE}&page[size]=${MAX_TRANSACTIONS_PER_BLOCK}`;
             }),
           },
         }
@@ -63,19 +71,19 @@ export const buildBlocksSerializer = (
     ],
     linkers: {
       document: new Linker(() => {
-        return `${PROTOCOL}://${HOST}:${PORT}/blocks?page[number]=${currentPage}&page[size]=${pageSize}`;
+        return `${PROTOCOL}://${HOST}:${PORT}/blocks?page[number]=${pageNumber}&page[size]=${pageSize}`;
       }),
       resource: new Linker((block: Block) => {
         return `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}`;
       }),
       paginator: new Paginator(() => {
-        const nextPage = currentPage + 1;
-        const previousPage = currentPage - 1;
+        const nextPage = pageNumber + 1;
+        const previousPage = pageNumber - 1;
         return {
-          first: `${PROTOCOL}://${HOST}:${PORT}/blocks?page[number]=${firstPage}&page[size]=${pageSize}`,
-          last: `${PROTOCOL}://${HOST}:${PORT}/blocks?page[number]=${lastPage}&page[size]=${pageSize}`,
+          first: `${PROTOCOL}://${HOST}:${PORT}/blocks?page[number]=${FIRST_PAGE}&page[size]=${pageSize}`,
+          last: `${PROTOCOL}://${HOST}:${PORT}/blocks?page[number]=${pages}&page[size]=${pageSize}`,
           next:
-            nextPage <= lastPage
+            nextPage <= pages
               ? `${PROTOCOL}://${HOST}:${PORT}/blocks?page[number]=${nextPage}&page[size]=${pageSize}`
               : null,
           prev:
@@ -84,6 +92,14 @@ export const buildBlocksSerializer = (
               : null,
         };
       }),
+    },
+    metaizers: {
+      document: new Metaizer(() => ({
+        itemsPerPage: pageSize,
+        totalItems: count,
+        currentPage: pageNumber,
+        totalPages: pages,
+      })),
     },
   });
 };
@@ -104,28 +120,29 @@ export const buildPendingTransactionSerializer =
   };
 
 export const buildPendingTransactionsSerializer = (
-  firstPage: number,
-  lastPage: number,
-  currentPage: number,
+  count: number,
+  pageNumber: number,
   pageSize: number
 ): Serializer<Transaction> => {
+  const pages = Math.ceil(count / pageSize);
+
   return new Serializer<Transaction>("pending-transaction", {
     nullData: false,
     linkers: {
       document: new Linker(() => {
-        return `${PROTOCOL}://${HOST}:${PORT}/pending-transactions?page[number]=${currentPage}&page[size]=${pageSize}`;
+        return `${PROTOCOL}://${HOST}:${PORT}/pending-transactions?page[number]=${pageNumber}&page[size]=${pageSize}`;
       }),
       resource: new Linker((pendingTransaction: Transaction) => {
         return `${PROTOCOL}://${HOST}:${PORT}/pending-transactions/${pendingTransaction.id}`;
       }),
       paginator: new Paginator(() => {
-        const nextPage = currentPage + 1;
-        const previousPage = currentPage - 1;
+        const nextPage = pageNumber + 1;
+        const previousPage = pageNumber - 1;
         return {
-          first: `${PROTOCOL}://${HOST}:${PORT}/pending-transactions?page[number]=${firstPage}&page[size]=${pageSize}`,
-          last: `${PROTOCOL}://${HOST}:${PORT}/pending-transactions?page[number]=${lastPage}&page[size]=${pageSize}`,
+          first: `${PROTOCOL}://${HOST}:${PORT}/pending-transactions?page[number]=${FIRST_PAGE}&page[size]=${pageSize}`,
+          last: `${PROTOCOL}://${HOST}:${PORT}/pending-transactions?page[number]=${pages}&page[size]=${pageSize}`,
           next:
-            nextPage <= lastPage
+            nextPage <= pages
               ? `${PROTOCOL}://${HOST}:${PORT}/pending-transactions?page[number]=${nextPage}&page[size]=${pageSize}`
               : null,
           prev:
@@ -134,6 +151,14 @@ export const buildPendingTransactionsSerializer = (
               : null,
         };
       }),
+    },
+    metaizers: {
+      document: new Metaizer(() => ({
+        itemsPerPage: pageSize,
+        totalItems: count,
+        currentPage: pageNumber,
+        totalPages: pages,
+      })),
     },
   });
 };
@@ -153,28 +178,29 @@ export const buildSignedTransactionSerializer = (): Serializer<Transaction> => {
 };
 
 export const buildSignedTransactionsSerializer = (
-  firstPage: number,
-  lastPage: number,
-  currentPage: number,
+  count: number,
+  pageNumber: number,
   pageSize: number
 ): Serializer<Transaction> => {
+  const pages = Math.ceil(count / pageSize);
+
   return new Serializer<Transaction>("signed-transaction", {
     nullData: false,
     linkers: {
       document: new Linker(() => {
-        return `${PROTOCOL}://${HOST}:${PORT}/signed-transactions?page[number]=${currentPage}&page[size]=${pageSize}`;
+        return `${PROTOCOL}://${HOST}:${PORT}/signed-transactions?page[number]=${pageNumber}&page[size]=${pageSize}`;
       }),
       resource: new Linker((signedTransaction: Transaction) => {
         return `${PROTOCOL}://${HOST}:${PORT}/signed-transactions/${signedTransaction.id}`;
       }),
       paginator: new Paginator(() => {
-        const nextPage = currentPage + 1;
-        const previousPage = currentPage - 1;
+        const nextPage = pageNumber + 1;
+        const previousPage = pageNumber - 1;
         return {
-          first: `${PROTOCOL}://${HOST}:${PORT}/signed-transactions?page[number]=${firstPage}&page[size]=${pageSize}`,
-          last: `${PROTOCOL}://${HOST}:${PORT}/signed-transactions?page[number]=${lastPage}&page[size]=${pageSize}`,
+          first: `${PROTOCOL}://${HOST}:${PORT}/signed-transactions?page[number]=${FIRST_PAGE}&page[size]=${pageSize}`,
+          last: `${PROTOCOL}://${HOST}:${PORT}/signed-transactions?page[number]=${pages}&page[size]=${pageSize}`,
           next:
-            nextPage <= lastPage
+            nextPage <= pages
               ? `${PROTOCOL}://${HOST}:${PORT}/signed-transactions?page[number]=${nextPage}&page[size]=${pageSize}`
               : null,
           prev:
@@ -183,6 +209,14 @@ export const buildSignedTransactionsSerializer = (
               : null,
         };
       }),
+    },
+    metaizers: {
+      document: new Metaizer(() => ({
+        itemsPerPage: pageSize,
+        totalItems: count,
+        currentPage: pageNumber,
+        totalPages: pages,
+      })),
     },
   });
 };
@@ -220,11 +254,12 @@ export const buildBlockTransactionSerializer = (
 
 export const buildBlockTransactionsSerializer = (
   block: Block,
-  firstPage: number,
-  lastPage: number,
-  currentPage: number,
+  count: number,
+  pageNumber: number,
   pageSize: number
 ): Serializer<Transaction> => {
+  const pages = Math.ceil(count / pageSize);
+
   return new Serializer<Transaction>("transaction", {
     nullData: false,
     relators: [
@@ -244,19 +279,19 @@ export const buildBlockTransactionsSerializer = (
     ],
     linkers: {
       document: new Linker(() => {
-        return `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=${currentPage}&page[size]=${pageSize}`;
+        return `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=${pageNumber}&page[size]=${pageSize}`;
       }),
       resource: new Linker((transaction: Transaction) => {
         return `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions/${transaction.id}`;
       }),
       paginator: new Paginator(() => {
-        const nextPage = currentPage + 1;
-        const previousPage = currentPage - 1;
+        const nextPage = pageNumber + 1;
+        const previousPage = pageNumber - 1;
         return {
-          first: `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=${firstPage}&page[size]=${pageSize}`,
-          last: `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=${lastPage}&page[size]=${pageSize}`,
+          first: `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=${FIRST_PAGE}&page[size]=${pageSize}`,
+          last: `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=${pages}&page[size]=${pageSize}`,
           next:
-            nextPage <= lastPage
+            nextPage <= pages
               ? `${PROTOCOL}://${HOST}:${PORT}/blocks/${block.id}/transactions?page[number]=${nextPage}&page[size]=${pageSize}`
               : null,
           prev:
@@ -265,6 +300,14 @@ export const buildBlockTransactionsSerializer = (
               : null,
         };
       }),
+    },
+    metaizers: {
+      document: new Metaizer(() => ({
+        itemsPerPage: pageSize,
+        totalItems: count,
+        currentPage: pageNumber,
+        totalPages: pages,
+      })),
     },
   });
 };
@@ -284,28 +327,29 @@ export const buildParticipantSerializer = (): Serializer<Participant> => {
 };
 
 export const buildParticipantsSerializer = (
-  firstPage: number,
-  lastPage: number,
-  currentPage: number,
+  count: number,
+  pageNumber: number,
   pageSize: number
 ): Serializer<Participant> => {
+  const pages = Math.ceil(count / pageSize);
+
   return new Serializer<Participant>("participant", {
     nullData: false,
     linkers: {
       document: new Linker(() => {
-        return `${PROTOCOL}://${HOST}:${PORT}/participants?page[number]=${currentPage}&page[size]=${pageSize}`;
+        return `${PROTOCOL}://${HOST}:${PORT}/participants?page[number]=${pageNumber}&page[size]=${pageSize}`;
       }),
       resource: new Linker((pendingTransaction: Participant) => {
         return `${PROTOCOL}://${HOST}:${PORT}/participants/${pendingTransaction.id}`;
       }),
       paginator: new Paginator(() => {
-        const nextPage = currentPage + 1;
-        const previousPage = currentPage - 1;
+        const nextPage = pageNumber + 1;
+        const previousPage = pageNumber - 1;
         return {
-          first: `${PROTOCOL}://${HOST}:${PORT}/participants?page[number]=${firstPage}&page[size]=${pageSize}`,
-          last: `${PROTOCOL}://${HOST}:${PORT}/participants?page[number]=${lastPage}&page[size]=${pageSize}`,
+          first: `${PROTOCOL}://${HOST}:${PORT}/participants?page[number]=${FIRST_PAGE}&page[size]=${pageSize}`,
+          last: `${PROTOCOL}://${HOST}:${PORT}/participants?page[number]=${pages}&page[size]=${pageSize}`,
           next:
-            nextPage <= lastPage
+            nextPage <= pages
               ? `${PROTOCOL}://${HOST}:${PORT}/participants?page[number]=${nextPage}&page[size]=${pageSize}`
               : null,
           prev:
@@ -314,6 +358,14 @@ export const buildParticipantsSerializer = (
               : null,
         };
       }),
+    },
+    metaizers: {
+      document: new Metaizer(() => ({
+        itemsPerPage: pageSize,
+        totalItems: count,
+        currentPage: pageNumber,
+        totalPages: pages,
+      })),
     },
   });
 };
@@ -333,28 +385,29 @@ export const buildNodeSerializer = (): Serializer<Node> => {
 };
 
 export const buildNodesSerializer = (
-  firstPage: number,
-  lastPage: number,
-  currentPage: number,
+  count: number,
+  pageNumber: number,
   pageSize: number
 ): Serializer<Node> => {
+  const pages = Math.ceil(count / pageSize);
+
   return new Serializer<Node>("node", {
     nullData: false,
     linkers: {
       document: new Linker(() => {
-        return `${PROTOCOL}://${HOST}:${PORT}/nodes?page[number]=${currentPage}&page[size]=${pageSize}`;
+        return `${PROTOCOL}://${HOST}:${PORT}/nodes?page[number]=${pageNumber}&page[size]=${pageSize}`;
       }),
       resource: new Linker((pendingTransaction: Node) => {
         return `${PROTOCOL}://${HOST}:${PORT}/nodes/${pendingTransaction.id}`;
       }),
       paginator: new Paginator(() => {
-        const nextPage = currentPage + 1;
-        const previousPage = currentPage - 1;
+        const nextPage = pageNumber + 1;
+        const previousPage = pageNumber - 1;
         return {
-          first: `${PROTOCOL}://${HOST}:${PORT}/nodes?page[number]=${firstPage}&page[size]=${pageSize}`,
-          last: `${PROTOCOL}://${HOST}:${PORT}/nodes?page[number]=${lastPage}&page[size]=${pageSize}`,
+          first: `${PROTOCOL}://${HOST}:${PORT}/nodes?page[number]=${FIRST_PAGE}&page[size]=${pageSize}`,
+          last: `${PROTOCOL}://${HOST}:${PORT}/nodes?page[number]=${pages}&page[size]=${pageSize}`,
           next:
-            nextPage <= lastPage
+            nextPage <= pages
               ? `${PROTOCOL}://${HOST}:${PORT}/nodes?page[number]=${nextPage}&page[size]=${pageSize}`
               : null,
           prev:
@@ -363,6 +416,14 @@ export const buildNodesSerializer = (
               : null,
         };
       }),
+    },
+    metaizers: {
+      document: new Metaizer(() => ({
+        itemsPerPage: pageSize,
+        totalItems: count,
+        currentPage: pageNumber,
+        totalPages: pages,
+      })),
     },
   });
 };

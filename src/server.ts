@@ -4,7 +4,13 @@ import { ApiData, Block, Node, Participant, Transaction } from "./types";
 import * as Hapi from "@hapi/hapi";
 import { Request, ResponseToolkit, Server } from "@hapi/hapi";
 import * as Boom from "@hapi/boom";
-import { HOST, PORT, PROTOCOL } from "./constants";
+import {
+  DEFAULT_PAGE_SIZE,
+  FIRST_PAGE,
+  HOST,
+  PORT,
+  PROTOCOL,
+} from "./constants";
 import { generateParticipantKey } from "./services/key-utils";
 import {
   buildBlockSerializer,
@@ -24,13 +30,13 @@ import { SequelizeClient } from "./brokers/sequelize-client";
 import { createBlock, getBlockById, getBlocks } from "./brokers/blocks-broker";
 import {
   createPendingTransaction,
+  createSignedTransaction,
   getBlockTransactionById,
   getBlockTransactions,
   getPendingTransactionById,
   getPendingTransactions,
   getSignedTransactionById,
   getSignedTransactions,
-  createSignedTransaction,
 } from "./brokers/transactions-broker";
 import {
   createParticipant,
@@ -39,11 +45,10 @@ import {
 } from "./brokers/paticipants-broker";
 import { createNode, getNodeById, getNodes } from "./brokers/nodes-broker";
 
-// todo - authentication and authorization?
 // todo - dockerize the server
+// todo - authentication and authorization?
 // todo - unit tests
 // todo - mobile app
-// todo - paginating
 
 export let server: Server;
 
@@ -82,9 +87,22 @@ export const init = async (): Promise<Server> => {
     method: "GET",
     path: "/blocks",
     handler: async (request, h) => {
-      const blocks: Block[] = await getBlocks(sequelizeClient);
+      const pageNumber: number =
+        Number(request.query["page[number]"]) || FIRST_PAGE;
+      const pageSize: number =
+        Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      return await buildBlocksSerializer(0, 25, 0, 10).serialize(blocks);
+      // todo - validate the input
+
+      const { count, rows } = await getBlocks(
+        sequelizeClient,
+        pageNumber,
+        pageSize
+      );
+
+      return await buildBlocksSerializer(count, pageNumber, pageSize).serialize(
+        rows
+      );
     },
   });
 
@@ -111,6 +129,7 @@ export const init = async (): Promise<Server> => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the block
+      // todo - enforce the maximum number of transactions per block
 
       const minerPublicKey = request.headers["x-miner-public-key"] as string;
 
@@ -144,11 +163,24 @@ export const init = async (): Promise<Server> => {
     method: "GET",
     path: "/pending-transactions",
     handler: async (request, h) => {
-      const pendingTransactions = await getPendingTransactions(sequelizeClient);
+      const pageNumber: number =
+        Number(request.query["page[number]"]) || FIRST_PAGE;
+      const pageSize: number =
+        Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      return await buildPendingTransactionsSerializer(0, 25, 0, 10).serialize(
-        pendingTransactions
+      // todo - validate the input
+
+      const { count, rows } = await getPendingTransactions(
+        sequelizeClient,
+        pageNumber,
+        pageSize
       );
+
+      return await buildPendingTransactionsSerializer(
+        count,
+        pageNumber,
+        pageSize
+      ).serialize(rows);
     },
   });
 
@@ -207,13 +239,24 @@ export const init = async (): Promise<Server> => {
     method: "GET",
     path: "/signed-transactions",
     handler: async (request, h) => {
-      const signedTransactions: Transaction[] = await getSignedTransactions(
-        sequelizeClient
+      const pageNumber: number =
+        Number(request.query["page[number]"]) || FIRST_PAGE;
+      const pageSize: number =
+        Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
+
+      // todo - validate the input
+
+      const { count, rows } = await getSignedTransactions(
+        sequelizeClient,
+        pageNumber,
+        pageSize
       );
 
-      return await buildSignedTransactionsSerializer(0, 25, 0, 10).serialize(
-        signedTransactions
-      );
+      return await buildSignedTransactionsSerializer(
+        count,
+        pageNumber,
+        pageSize
+      ).serialize(rows);
     },
   });
 
@@ -270,20 +313,28 @@ export const init = async (): Promise<Server> => {
     path: "/blocks/{blockId}/transactions",
     handler: async (request, h) => {
       const { blockId } = request.params;
+      const pageNumber: number =
+        Number(request.query["page[number]"]) || FIRST_PAGE;
+      const pageSize: number =
+        Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
+
+      // todo - validate the input
 
       const block: Block = await getBlockById(sequelizeClient, blockId);
-      const blockTransactions: Transaction[] = await getBlockTransactions(
+
+      const { count, rows } = await getBlockTransactions(
         sequelizeClient,
-        blockId
+        blockId,
+        pageNumber,
+        pageSize
       );
 
       return await buildBlockTransactionsSerializer(
         block,
-        0,
-        25,
-        0,
-        10
-      ).serialize(blockTransactions);
+        count,
+        pageNumber,
+        pageSize
+      ).serialize(rows);
     },
   });
 
@@ -310,11 +361,22 @@ export const init = async (): Promise<Server> => {
     method: "GET",
     path: "/participants",
     handler: async (request, h) => {
-      const participants: Participant[] = await getParticipants(
-        sequelizeClient
+      const pageNumber: number =
+        Number(request.query["page[number]"]) || FIRST_PAGE;
+      const pageSize: number =
+        Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
+
+      // todo - validate the input
+
+      const { count, rows } = await getParticipants(
+        sequelizeClient,
+        pageNumber,
+        pageSize
       );
 
-      return buildParticipantsSerializer(0, 25, 0, 10).serialize(participants);
+      return buildParticipantsSerializer(count, pageNumber, pageSize).serialize(
+        rows
+      );
     },
   });
 
@@ -377,9 +439,20 @@ export const init = async (): Promise<Server> => {
     method: "GET",
     path: "/nodes",
     handler: async (request, h) => {
-      const nodes: Node[] = await getNodes(sequelizeClient);
+      const pageNumber: number =
+        Number(request.query["page[number]"]) || FIRST_PAGE;
+      const pageSize: number =
+        Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      return buildNodesSerializer(0, 25, 0, 10).serialize(nodes);
+      // todo - validate the input
+
+      const { count, rows } = await getNodes(
+        sequelizeClient,
+        pageNumber,
+        pageSize
+      );
+
+      return buildNodesSerializer(count, pageNumber, pageSize).serialize(rows);
     },
   });
 

@@ -27,17 +27,26 @@ export const getNodeById = async (
 };
 
 export const getNodes = async (
-  sequelizeClient: SequelizeClient
-): Promise<Node[]> => {
+  sequelizeClient: SequelizeClient,
+  pageNumber: number,
+  pageSize: number
+): Promise<{ count: number; rows: Node[] }> => {
   const nodeModel = sequelizeClient.getNodeModel();
 
-  const models = await nodeModel.findAll();
-
-  return models.map((model) => {
-    const dbNode = model.get();
-
-    return map(dbNode);
+  const { count, rows } = await nodeModel.findAndCountAll({
+    offset: pageNumber * pageSize,
+    order: [["createdAt", "ASC"]],
+    limit: pageSize,
   });
+
+  return {
+    count,
+    rows: rows.map((model) => {
+      const dbNode = model.get();
+
+      return map(dbNode);
+    }),
+  };
 };
 
 export const createNode = async (

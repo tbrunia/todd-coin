@@ -1,7 +1,7 @@
 import { Block, Transaction } from "../types";
 import { SequelizeClient } from "./sequelize-client";
 import { v4 } from "uuid";
-import { MINING_REWARD } from "../constants";
+import { MAX_TRANSACTIONS_PER_BLOCK, MINING_REWARD } from "../constants";
 import { getBlockTransactions } from "./transactions-broker";
 
 const map = (dbBlock): Block => ({
@@ -28,33 +28,46 @@ export const getBlockById = async (
 
   const dbBlock = model.get();
 
-  const transactions: Transaction[] = await getBlockTransactions(
+  const { rows } = await getBlockTransactions(
     sequelizeClient,
-    dbBlock.id
+    dbBlock.id,
+    0,
+    MAX_TRANSACTIONS_PER_BLOCK
   );
 
-  return { ...map(dbBlock), transactions };
+  return { ...map(dbBlock), transactions: rows };
 };
 
 export const getBlocks = async (
-  sequelizeClient: SequelizeClient
-): Promise<Block[]> => {
+  sequelizeClient: SequelizeClient,
+  pageNumber: number,
+  pageSize: number
+): Promise<{ count: number; rows: Block[] }> => {
   const blockModel = sequelizeClient.getBlockModel();
 
-  const models = await blockModel.findAll();
+  const { count, rows } = await blockModel.findAndCountAll({
+    offset: pageNumber * pageSize,
+    order: [["createdAt", "ASC"]],
+    limit: pageSize,
+  });
 
-  return await Promise.all(
-    models.map(async (model) => {
-      const dbBlock = model.get();
+  return {
+    count,
+    rows: await Promise.all(
+      rows.map(async (model) => {
+        const dbBlock = model.get();
 
-      const transactions: Transaction[] = await getBlockTransactions(
-        sequelizeClient,
-        dbBlock.id
-      );
+        const { rows } = await getBlockTransactions(
+          sequelizeClient,
+          dbBlock.id,
+          0,
+          MAX_TRANSACTIONS_PER_BLOCK
+        );
 
-      return { ...map(dbBlock), transactions };
-    })
-  );
+        return { ...map(dbBlock), transactions: rows };
+      })
+    ),
+  };
 };
 
 export const createBlock = async (
@@ -101,10 +114,12 @@ export const createBlock = async (
 
   const dbBlock = model.get();
 
-  const transactions: Transaction[] = await getBlockTransactions(
+  const { rows } = await getBlockTransactions(
     sequelizeClient,
-    dbBlock.id
+    dbBlock.id,
+    0,
+    MAX_TRANSACTIONS_PER_BLOCK
   );
 
-  return { ...map(dbBlock), transactions };
+  return { ...map(dbBlock), transactions: rows };
 };

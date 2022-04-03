@@ -159,8 +159,8 @@ export class SequelizeClient {
         id: genesisParticipant.id,
       },
       defaults: {
-          ...genesisParticipant,
-          publicKey: genesisParticipant.key.public,
+        ...genesisParticipant,
+        publicKey: genesisParticipant.key.public,
       },
     });
 
