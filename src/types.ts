@@ -3,7 +3,12 @@ export interface ParticipantKey {
   private?: string;
 }
 
-// todo - add roles (charity or volunteer) to participants
+export enum Roles {
+  VOLUNTEER = "VOLUNTEER",
+  CHARITY = "CHARITY",
+  NODE = "NODE",
+}
+
 export interface Participant {
   id?: string;
   createdAt?: string;
@@ -13,6 +18,7 @@ export interface Participant {
   email?: string;
   phone?: string;
   key: ParticipantKey;
+  roles?: Roles[];
 }
 
 export interface Transaction {
@@ -41,16 +47,6 @@ export interface Node {
   createdAt?: string;
   updatedAt?: string;
   baseUrl: string;
-}
-
-export interface Blockchain {
-  chain: Block[];
-  pendingTransactions: Transaction[];
-  signedTransactions: Transaction[];
-  participants: Participant[];
-  nodes: Node[];
-  difficulty: number;
-  miningReward: number;
 }
 
 export interface ApiData {

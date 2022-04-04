@@ -14,6 +14,7 @@ const map = (dbParticipant): Participant => ({
   email: dbParticipant.email,
   phone: dbParticipant.phone,
   key: { public: dbParticipant.publicKey },
+  roles: dbParticipant.roles,
 });
 
 export const getParticipantById = async (
@@ -92,6 +93,7 @@ export const createParticipant = async (
     email: newParticipant.email,
     phone: newParticipant.phone,
     publicKey: newParticipant.key.public,
+    roles: newParticipant.roles,
   });
 
   const dbParticipant = model.get();

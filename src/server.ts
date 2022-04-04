@@ -55,6 +55,9 @@ import jwt from "jsonwebtoken";
 // todo - unit tests
 // todo - mobile app
 // todo - enable cors
+// todo - register new volunteer, charity and node participant
+// todo - get not found is throwing a 500 error
+// todo - try/catch all broker interactions
 
 export let server: Server;
 
@@ -81,14 +84,14 @@ export const init = async (): Promise<Server> => {
 
         const accessToken = accessTokenWithBearer.substring("bearer ".length);
 
-        let pid: string = undefined;
+        let participantId: string = undefined;
         let exp: number = undefined;
         try {
           const decode = jwt.decode(accessToken) as {
-            pid: string;
+            participantId: string;
             exp: number;
           };
-          pid = decode.pid;
+          participantId = decode.participantId;
           exp = decode.exp;
         } catch (error) {
           throw Boom.unauthorized(error.message);
@@ -110,7 +113,7 @@ export const init = async (): Promise<Server> => {
         try {
           const participant: Participant = await getParticipantById(
             sequelizeClient,
-            pid
+            participantId
           );
 
           return h.authenticated({ credentials: { participant } });
@@ -165,7 +168,7 @@ export const init = async (): Promise<Server> => {
       try {
         const accessToken = jwt.sign(
           {
-            pid: participant.id,
+            participantId: participant.id,
           },
           serverSecret,
           { expiresIn: "1h" }

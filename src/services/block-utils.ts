@@ -1,4 +1,4 @@
-import { Block, Participant, Transaction } from "../types";
+import { Block, Participant, Roles, Transaction } from "../types";
 import { DIFFICULTY, GENESIS_REWARD } from "../constants";
 import {
   calculateTransactionHash,
@@ -59,6 +59,7 @@ export const createGenesisParticipant = (): Participant => ({
   key: {
     public: GENESIS_PARTICIPANT_PUBLIC_KEY,
   },
+  roles: [Roles.VOLUNTEER],
 });
 
 export const mineNextBlock = (
