@@ -61,6 +61,8 @@ import jwt from "jsonwebtoken";
 // todo - add update participant
 // todo - add update node
 // todo - add a charity resource and association with participants (name, address, email, url, phone number, etc.)
+// todo - add a license
+// todo - add github participant and pull request files
 
 export let server: Server;
 
