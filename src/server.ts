@@ -2,7 +2,7 @@
 
 import { ApiData, Block, Node, Participant, Transaction } from "./types";
 import * as Hapi from "@hapi/hapi";
-import { Request, ResponseToolkit, Server } from "@hapi/hapi";
+import { Request, Server, ServerAuthSchemeObject } from "@hapi/hapi";
 import * as Boom from "@hapi/boom";
 import {
   DEFAULT_PAGE_SIZE,
@@ -11,7 +11,10 @@ import {
   PORT,
   PROTOCOL,
 } from "./constants";
-import { generateParticipantKey } from "./services/key-utils";
+import {
+  generateParticipantKey,
+  getKeyPairFromPrivateKey,
+} from "./services/key-utils";
 import {
   buildBlockSerializer,
   buildBlocksSerializer,
@@ -41,12 +44,14 @@ import {
 import {
   createParticipant,
   getParticipantById,
+  getParticipantByPublicKey,
   getParticipants,
 } from "./brokers/paticipants-broker";
 import { createNode, getNodeById, getNodes } from "./brokers/nodes-broker";
+import { ec } from "elliptic";
+import jwt from "jsonwebtoken";
 
 // todo - dockerize the server
-// todo - authentication and authorization?
 // todo - unit tests
 // todo - mobile app
 
@@ -60,6 +65,63 @@ export const init = async (): Promise<Server> => {
     port: PORT,
     host: HOST,
   });
+
+  server.auth.scheme(
+    "custom",
+    (): ServerAuthSchemeObject => ({
+      authenticate: async (request: Request, h) => {
+        const accessTokenWithBearer = request.headers[
+          "authorization"
+        ] as string;
+
+        if (accessTokenWithBearer === undefined) {
+          throw Boom.unauthorized("authorization header required");
+        }
+
+        const accessToken = accessTokenWithBearer.substring("bearer ".length);
+
+        let pid: string = undefined;
+        let exp: number = undefined;
+        try {
+          const decode = jwt.decode(accessToken) as {
+            pid: string;
+            exp: number;
+          };
+          pid = decode.pid;
+          exp = decode.exp;
+        } catch (error) {
+          throw Boom.unauthorized(error.message);
+        }
+
+        if (Math.floor(Date.now() / 1000) > exp) {
+          throw Boom.unauthorized("token expired");
+        }
+
+        const serverSecret = process.env.SERVER_SECRET || "todd-coin-is-cool";
+
+        try {
+          jwt.verify(accessToken, serverSecret);
+        } catch (error) {
+          console.error(error.message);
+          throw Boom.unauthorized(error.message);
+        }
+
+        try {
+          const participant: Participant = await getParticipantById(
+            sequelizeClient,
+            pid
+          );
+
+          return h.authenticated({ credentials: { participant } });
+        } catch (error) {
+          console.error(error.message);
+          throw Boom.internal();
+        }
+      },
+    })
+  );
+
+  server.auth.strategy("custom", "custom");
 
   server.route({
     method: "GET",
@@ -81,11 +143,51 @@ export const init = async (): Promise<Server> => {
     },
   });
 
+  // Auth
+
+  server.route({
+    method: "POST",
+    path: "/auth/token",
+    handler: async (request, h) => {
+      const payload = request.payload as { privateKey: string };
+      const { privateKey } = payload;
+
+      const keyPair: ec.KeyPair = getKeyPairFromPrivateKey(privateKey);
+      const publicKey: string = keyPair.getPublic("hex");
+      const participant: Participant = await getParticipantByPublicKey(
+        sequelizeClient,
+        publicKey
+      );
+
+      const serverSecret = process.env.SERVER_SECRET || "todd-coin-is-cool";
+
+      try {
+        const accessToken = jwt.sign(
+          {
+            pid: participant.id,
+          },
+          serverSecret,
+          { expiresIn: "1h" }
+        );
+
+        return {
+          access: accessToken,
+        };
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+    },
+  });
+
   // Block Management
 
   server.route({
     method: "GET",
     path: "/blocks",
+    options: {
+      auth: "custom",
+    },
     handler: async (request, h) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
@@ -109,6 +211,9 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/blocks/{blockId}",
+    options: {
+      auth: "custom",
+    },
     handler: async (request, h) => {
       const { blockId } = request.params;
 
@@ -125,15 +230,17 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "POST",
     path: "/blocks",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the block
       // todo - enforce the maximum number of transactions per block
 
-      const minerPublicKey = request.headers["x-miner-public-key"] as string;
-
-      // todo validate the minerPublicKey
+      const participant = request.auth.credentials.participant as Participant;
+      const minerPublicKey = participant.key.public;
 
       const newBlock = {
         id: payload.data.id,
@@ -151,7 +258,7 @@ export const init = async (): Promise<Server> => {
 
         return buildBlockSerializer().serialize(createdBlock);
       } catch (error) {
-        console.log(error.message);
+        console.error(error.message);
         throw Boom.internal();
       }
     },
@@ -162,7 +269,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/pending-transactions",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
@@ -187,7 +297,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/pending-transactions/{pendingTransactionId}",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const { pendingTransactionId } = request.params;
 
       const pendingTransaction: Transaction = await getPendingTransactionById(
@@ -206,7 +319,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "POST",
     path: "/pending-transactions",
-    handler: async (request: Request, h: ResponseToolkit) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request: Request) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the pending transaction
@@ -227,7 +343,7 @@ export const init = async (): Promise<Server> => {
           createdPendingTransaction
         );
       } catch (error) {
-        console.log(error.message);
+        console.error(error.message);
         throw Boom.internal();
       }
     },
@@ -238,7 +354,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/signed-transactions",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
@@ -263,7 +382,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/signed-transactions/{signedTransactionId}",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const { signedTransactionId } = request.params;
 
       const signedTransaction: Transaction = await getSignedTransactionById(
@@ -282,7 +404,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "POST",
     path: "/signed-transactions",
-    handler: async (request: Request, h: ResponseToolkit) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request: Request) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the signed transaction
@@ -300,7 +425,7 @@ export const init = async (): Promise<Server> => {
           createdSignedTransaction
         );
       } catch (error) {
-        console.log(error.message);
+        console.error(error.message);
         throw Boom.internal();
       }
     },
@@ -311,7 +436,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/blocks/{blockId}/transactions",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const { blockId } = request.params;
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
@@ -341,7 +469,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/blocks/{blockId}/transactions/{transactionId}",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const { blockId, transactionId } = request.params;
 
       const block: Block = await getBlockById(sequelizeClient, blockId);
@@ -360,7 +491,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/participants",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
@@ -383,7 +517,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/participants/{participantId}",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const { participantId } = request.params;
 
       const participant: Participant = await getParticipantById(
@@ -398,7 +535,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "POST",
     path: "/participants",
-    handler: async (request: Request, h: ResponseToolkit) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request: Request) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the new participant
@@ -427,7 +567,7 @@ export const init = async (): Promise<Server> => {
           },
         });
       } catch (error) {
-        console.log(error.message);
+        console.error(error.message);
         throw Boom.internal();
       }
     },
@@ -438,7 +578,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/nodes",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
@@ -459,7 +602,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/nodes/{nodeId}",
-    handler: async (request, h) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request) => {
       const { nodeId } = request.params;
 
       const node: Node = await getNodeById(sequelizeClient, nodeId);
@@ -471,7 +617,10 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "POST",
     path: "/nodes",
-    handler: async (request: Request, h: ResponseToolkit) => {
+    options: {
+      auth: "custom",
+    },
+    handler: async (request: Request) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the new node
@@ -490,7 +639,7 @@ export const init = async (): Promise<Server> => {
 
         return buildNodeSerializer().serialize(createdNode);
       } catch (error) {
-        console.log(error.message);
+        console.error(error.message);
         throw Boom.internal();
       }
     },

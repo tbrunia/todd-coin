@@ -2,6 +2,7 @@ import { Participant } from "../types";
 import { SequelizeClient } from "./sequelize-client";
 import { Model } from "sequelize";
 import { v4 } from "uuid";
+import _ from "lodash";
 
 const map = (dbParticipant): Participant => ({
   id: dbParticipant.id,
@@ -25,6 +26,27 @@ export const getParticipantById = async (
   if (!model) {
     return;
   }
+
+  const dbParticipant = model.get();
+
+  return map(dbParticipant);
+};
+
+export const getParticipantByPublicKey = async (
+  sequelizeClient: SequelizeClient,
+  publicKey: string
+): Promise<Participant | undefined> => {
+  const participantModel = sequelizeClient.getParticipantModel();
+
+  const models: Model[] = await participantModel.findAll({
+    where: {
+      publicKey,
+    },
+  });
+
+  // todo - throw an error if there are more than one matching record
+
+  const model = _.first(models);
 
   const dbParticipant = model.get();
 

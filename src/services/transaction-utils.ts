@@ -1,7 +1,7 @@
 import { Transaction } from "../types";
 import { ec } from "elliptic";
+import { getKeyPairFromPrivateKey, getKeyPairFromPublicKey } from "./key-utils";
 
-const client: ec = new ec("secp256k1");
 const SHA256 = require("crypto-js/sha256");
 
 export const calculateTransactionHash = (transaction: Transaction): string => {
@@ -15,8 +15,9 @@ export const signTransaction = (
   pendingTransaction: Transaction,
   privateKey: string
 ): Transaction => {
-  const signingKey: ec.KeyPair = client.keyFromPrivate(privateKey);
-  if (signingKey.getPublic("hex") !== pendingTransaction.from) {
+  const signingKey: ec.KeyPair = getKeyPairFromPrivateKey(privateKey);
+  const publicKey = signingKey.getPublic("hex");
+  if (publicKey !== pendingTransaction.from) {
     throw new Error("You cannot sign transaction.");
   }
 
@@ -46,9 +47,10 @@ export const isSignedTransactionValid = (signedTransaction: Transaction) => {
     throw new Error("No signature in this signed transaction");
   }
 
-  const publicKey = client.keyFromPublic(signedTransaction.from, "hex");
+  const publicKey: string = signedTransaction.from;
+  const signingKey: ec.KeyPair = getKeyPairFromPublicKey(publicKey);
 
-  return publicKey.verify(
+  return signingKey.verify(
     calculateTransactionHash(signedTransaction),
     signedTransaction.signature
   );

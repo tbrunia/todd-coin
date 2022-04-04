@@ -12,3 +12,15 @@ export const generateParticipantKey = (): ParticipantKey => {
     private: privateKey,
   };
 };
+
+export const getKeyPairFromPrivateKey = (privateKey: string): ec.KeyPair => {
+  const client: ec = new ec("secp256k1");
+
+  return client.keyFromPrivate(privateKey);
+};
+
+export const getKeyPairFromPublicKey = (publicKey: string): ec.KeyPair => {
+  const client: ec = new ec("secp256k1");
+
+  return client.keyFromPublic(publicKey, "hex");
+};
