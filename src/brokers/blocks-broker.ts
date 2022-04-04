@@ -75,51 +75,51 @@ export const createBlock = async (
   newBlock: Block,
   minerPublicKey: string
 ): Promise<Block> => {
-  // todo - put all of the following in a transaction
+  return await sequelizeClient.transaction<Block>(async () => {
+    const blockModel = sequelizeClient.getBlockModel();
 
-  const blockModel = sequelizeClient.getBlockModel();
+    const model = await blockModel.create({
+      id: newBlock.id || v4(),
+      nonce: newBlock.nonce,
+      previousHash: newBlock.previousHash,
+      hash: newBlock.hash,
+    });
 
-  const model = await blockModel.create({
-    id: newBlock.id || v4(),
-    nonce: newBlock.nonce,
-    previousHash: newBlock.previousHash,
-    hash: newBlock.hash,
+    const transactionModel = sequelizeClient.getTransactionModel();
+
+    await Promise.all(
+        newBlock.transactions.map((transaction: Transaction) => {
+          return transactionModel.update(
+              {
+                type: "block",
+                blockId: newBlock.id,
+              },
+              {
+                where: {
+                  id: transaction.id,
+                },
+              }
+          );
+        })
+    );
+
+    await transactionModel.create({
+      id: v4(),
+      type: "signed",
+      to: minerPublicKey,
+      amount: MINING_REWARD,
+      description: "mining reward",
+    });
+
+    const dbBlock = model.get();
+
+    const {rows} = await getBlockTransactions(
+        sequelizeClient,
+        0,
+        MAX_TRANSACTIONS_PER_BLOCK,
+        dbBlock.id
+    );
+
+    return {...map(dbBlock), transactions: rows};
   });
-
-  const transactionModel = sequelizeClient.getTransactionModel();
-
-  await Promise.all(
-    newBlock.transactions.map((transaction: Transaction) => {
-      return transactionModel.update(
-        {
-          type: "block",
-          blockId: newBlock.id,
-        },
-        {
-          where: {
-            id: transaction.id,
-          },
-        }
-      );
-    })
-  );
-
-  await transactionModel.create({
-    id: v4(),
-    type: "signed",
-    to: minerPublicKey,
-    amount: MINING_REWARD,
-    description: "mining reward",
-  });
-
-  const dbBlock = model.get();
-
-  const { rows } = await getBlockTransactions(
-    sequelizeClient,
-    0,
-    MAX_TRANSACTIONS_PER_BLOCK,
-    dbBlock.id
-  );
-
-  return { ...map(dbBlock), transactions: rows };
 };

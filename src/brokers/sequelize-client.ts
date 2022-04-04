@@ -1,4 +1,4 @@
-import { DataTypes, Sequelize } from "sequelize";
+import * as sequelize from "sequelize";
 import { Block, Participant, Transaction } from "../types";
 import {
   createGenesisBlock,
@@ -7,7 +7,7 @@ import {
 import { getDatabaseSettings } from "./environment-utils";
 
 export class SequelizeClient {
-  private sequelize: Sequelize;
+  private sequelize: sequelize.Sequelize;
   private nodeModel;
   private participantModel;
   private transactionModel;
@@ -16,7 +16,7 @@ export class SequelizeClient {
   async init() {
     const { database, username, password, host, port } = getDatabaseSettings();
 
-    this.sequelize = new Sequelize(database, username, password, {
+    this.sequelize = new sequelize.Sequelize(database, username, password, {
       host,
       port,
       dialect: "postgres",
@@ -26,12 +26,12 @@ export class SequelizeClient {
       "Node",
       {
         id: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
           primaryKey: true,
         },
         baseUrl: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
         },
       },
@@ -44,32 +44,32 @@ export class SequelizeClient {
       "Participant",
       {
         id: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
           primaryKey: true,
         },
         firstName: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: true,
         },
         lastName: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: true,
         },
         email: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: true,
         },
         phone: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: true,
         },
         publicKey: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
         },
         roles: {
-          type: DataTypes.ARRAY(DataTypes.STRING),
+          type: sequelize.DataTypes.ARRAY(sequelize.DataTypes.STRING),
           allowNull: false,
         },
       },
@@ -82,37 +82,37 @@ export class SequelizeClient {
       "Transaction",
       {
         id: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
           primaryKey: true,
         },
         type: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           values: ["pending", "signed", "block"],
           allowNull: false,
         },
         blockId: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: true,
         },
         from: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: true,
         },
         to: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
         },
         amount: {
-          type: DataTypes.BIGINT,
+          type: sequelize.DataTypes.BIGINT,
           allowNull: false,
         },
         description: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
         },
         signature: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: true,
         },
       },
@@ -125,20 +125,20 @@ export class SequelizeClient {
       "Block",
       {
         id: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
           primaryKey: true,
         },
         nonce: {
-          type: DataTypes.INTEGER,
+          type: sequelize.DataTypes.INTEGER,
           allowNull: false,
         },
         previousHash: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
         },
         hash: {
-          type: DataTypes.STRING,
+          type: sequelize.DataTypes.STRING,
           allowNull: false,
         },
       },
@@ -210,5 +210,9 @@ export class SequelizeClient {
 
   getBlockModel() {
     return this.blockModel;
+  }
+
+  async transaction<T>(autoCallback: (t: sequelize.Transaction) => PromiseLike<T>): Promise<T> {
+      return await this.sequelize.transaction<T>(autoCallback);
   }
 }
