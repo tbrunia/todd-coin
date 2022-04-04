@@ -90,6 +90,8 @@ const getPendingTransactionById = async (
   };
 };
 
+// todo add authentication
+
 // todo other operations...
 // 1. add pending transaction
 // 2. view my pending transactions for signing
