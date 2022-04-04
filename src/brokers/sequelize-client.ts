@@ -4,6 +4,7 @@ import {
   createGenesisBlock,
   createGenesisParticipant,
 } from "../services/block-utils";
+import { getDatabaseSettings } from "./environment-utils";
 
 export class SequelizeClient {
   private sequelize: Sequelize;
@@ -13,11 +14,7 @@ export class SequelizeClient {
   private blockModel;
 
   async init() {
-    const database = process.env.DB_NAME || "todd-coin";
-    const username = process.env.DB_USERNAME || "postgres";
-    const password = process.env.DB_PASSWORD || "secret";
-    const host = process.env.DB_HOST || "localhost";
-    const port = Number(process.env.DB_PORT) || 5432;
+    const { database, username, password, host, port } = getDatabaseSettings();
 
     this.sequelize = new Sequelize(database, username, password, {
       host,

@@ -50,6 +50,7 @@ import {
 import { createNode, getNodeById, getNodes } from "./brokers/nodes-broker";
 import { ec } from "elliptic";
 import jwt from "jsonwebtoken";
+import { getServerSecret } from "./environment-utils";
 
 // todo - dockerize the server
 // todo - unit tests
@@ -106,7 +107,7 @@ export const init = async (): Promise<Server> => {
           throw Boom.unauthorized("token expired");
         }
 
-        const serverSecret = process.env.SERVER_SECRET || "todd-coin-is-cool";
+        const serverSecret = getServerSecret();
 
         try {
           jwt.verify(accessToken, serverSecret);
@@ -168,7 +169,7 @@ export const init = async (): Promise<Server> => {
         publicKey
       );
 
-      const serverSecret = process.env.SERVER_SECRET || "todd-coin-is-cool";
+      const serverSecret = getServerSecret();
 
       try {
         const accessToken = jwt.sign(
