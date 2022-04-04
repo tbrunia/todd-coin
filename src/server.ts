@@ -54,6 +54,7 @@ import jwt from "jsonwebtoken";
 // todo - dockerize the server
 // todo - unit tests
 // todo - mobile app
+// todo - enable cors
 
 export let server: Server;
 
