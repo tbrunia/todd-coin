@@ -1,6 +1,7 @@
 import { Transaction } from "../types";
 import { SequelizeClient } from "./sequelize-client";
 import { v4 } from "uuid";
+import { buildWhere } from "./broker-utils";
 
 const map = (dbTransaction): Transaction => ({
   id: dbTransaction.id,
@@ -80,14 +81,18 @@ export const getBlockTransactionById = async (
 export const getPendingTransactions = async (
   sequelizeClient: SequelizeClient,
   pageNumber: number,
-  pageSize: number
+  pageSize: number,
+  from?: string,
+  to?: string
 ): Promise<{ count: number; rows: Transaction[] }> => {
   const transactionModel = sequelizeClient.getTransactionModel();
-
   const { count, rows } = await transactionModel.findAndCountAll({
-    where: {
-      type: "pending",
-    },
+    where: buildWhere(
+      { from, to },
+      {
+        type: "pending",
+      }
+    ),
     offset: pageNumber * pageSize,
     order: [["createdAt", "ASC"]],
     limit: pageSize,
@@ -106,14 +111,19 @@ export const getPendingTransactions = async (
 export const getSignedTransactions = async (
   sequelizeClient: SequelizeClient,
   pageNumber: number,
-  pageSize: number
+  pageSize: number,
+  from?: string,
+  to?: string
 ): Promise<{ count: number; rows: Transaction[] }> => {
   const transactionModel = sequelizeClient.getTransactionModel();
 
   const { count, rows } = await transactionModel.findAndCountAll({
-    where: {
-      type: "signed",
-    },
+    where: buildWhere(
+      { from, to },
+      {
+        type: "signed",
+      }
+    ),
     offset: pageNumber * pageSize,
     order: [["createdAt", "ASC"]],
     limit: pageSize,
@@ -131,9 +141,9 @@ export const getSignedTransactions = async (
 
 export const getBlockTransactions = async (
   sequelizeClient: SequelizeClient,
-  blockId: string,
   pageNumber: number,
-  pageSize: number
+  pageSize: number,
+  blockId: string
 ): Promise<{ count: number; rows: Transaction[] }> => {
   const transactionModel = sequelizeClient.getTransactionModel();
 

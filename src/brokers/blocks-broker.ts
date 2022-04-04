@@ -30,9 +30,9 @@ export const getBlockById = async (
 
   const { rows } = await getBlockTransactions(
     sequelizeClient,
-    dbBlock.id,
     0,
-    MAX_TRANSACTIONS_PER_BLOCK
+    MAX_TRANSACTIONS_PER_BLOCK,
+    dbBlock.id
   );
 
   return { ...map(dbBlock), transactions: rows };
@@ -59,9 +59,9 @@ export const getBlocks = async (
 
         const { rows } = await getBlockTransactions(
           sequelizeClient,
-          dbBlock.id,
           0,
-          MAX_TRANSACTIONS_PER_BLOCK
+          MAX_TRANSACTIONS_PER_BLOCK,
+          dbBlock.id
         );
 
         return { ...map(dbBlock), transactions: rows };
@@ -116,9 +116,9 @@ export const createBlock = async (
 
   const { rows } = await getBlockTransactions(
     sequelizeClient,
-    dbBlock.id,
     0,
-    MAX_TRANSACTIONS_PER_BLOCK
+    MAX_TRANSACTIONS_PER_BLOCK,
+    dbBlock.id
   );
 
   return { ...map(dbBlock), transactions: rows };

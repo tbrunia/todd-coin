@@ -277,13 +277,17 @@ export const init = async (): Promise<Server> => {
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
+      const filterFrom: string = request.query["filter[from]"];
+      const filterTo: string = request.query["filter[to]"];
 
       // todo - validate the input
 
       const { count, rows } = await getPendingTransactions(
         sequelizeClient,
         pageNumber,
-        pageSize
+        pageSize,
+        filterFrom,
+        filterTo
       );
 
       return await buildPendingTransactionsSerializer(
@@ -452,9 +456,9 @@ export const init = async (): Promise<Server> => {
 
       const { count, rows } = await getBlockTransactions(
         sequelizeClient,
-        blockId,
         pageNumber,
-        pageSize
+        pageSize,
+        blockId
       );
 
       return await buildBlockTransactionsSerializer(
@@ -499,13 +503,15 @@ export const init = async (): Promise<Server> => {
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
+      const filterPublicKey: string = request.query["filter[publicKey]"];
 
       // todo - validate the input
 
       const { count, rows } = await getParticipants(
         sequelizeClient,
         pageNumber,
-        pageSize
+        pageSize,
+        filterPublicKey
       );
 
       return buildParticipantsSerializer(count, pageNumber, pageSize).serialize(

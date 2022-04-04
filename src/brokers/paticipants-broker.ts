@@ -3,6 +3,7 @@ import { SequelizeClient } from "./sequelize-client";
 import { Model } from "sequelize";
 import { v4 } from "uuid";
 import _ from "lodash";
+import { buildWhere } from "./broker-utils";
 
 const map = (dbParticipant): Participant => ({
   id: dbParticipant.id,
@@ -56,11 +57,13 @@ export const getParticipantByPublicKey = async (
 export const getParticipants = async (
   sequelizeClient: SequelizeClient,
   pageNumber: number,
-  pageSize: number
+  pageSize: number,
+  publicKey?: string
 ): Promise<{ count: number; rows: Participant[] }> => {
   const participantModel = sequelizeClient.getParticipantModel();
 
   const { count, rows } = await participantModel.findAndCountAll({
+    where: buildWhere({ publicKey }),
     offset: pageNumber * pageSize,
     order: [["createdAt", "ASC"]],
     limit: pageSize,
