@@ -58,6 +58,9 @@ import jwt from "jsonwebtoken";
 // todo - register new volunteer, charity and node participant
 // todo - get not found is throwing a 500 error
 // todo - try/catch all broker interactions
+// todo - add update participant
+// todo - add update node
+// todo - add a charity resource and association with participants (name, address, email, url, phone number, etc.)
 
 export let server: Server;
 
