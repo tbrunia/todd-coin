@@ -1,6 +1,5 @@
 .idea
 dist
 node_modules
-todd-coin.json
+pgdata
 private-keys.txt
-participants.json

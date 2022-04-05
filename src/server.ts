@@ -57,13 +57,12 @@ import { getServerSecret } from "./environment-utils";
 // todo - mobile app
 // todo - enable cors
 // todo - register new volunteer, charity and node participant
-// todo - get not found is throwing a 500 error
-// todo - try/catch all broker interactions
 // todo - add update participant
 // todo - add update node
 // todo - add a charity resource and association with participants (name, address, email, url, phone number, etc.)
 // todo - add a license
 // todo - add github participant and pull request files
+// todo - serialize errors to match json:api standards
 
 export let server: Server;
 
@@ -116,17 +115,22 @@ export const init = async (): Promise<Server> => {
           throw Boom.unauthorized(error.message);
         }
 
+        let participant: Participant;
         try {
-          const participant: Participant = await getParticipantById(
+          participant = await getParticipantById(
             sequelizeClient,
             participantId
           );
-
-          return h.authenticated({ credentials: { participant } });
         } catch (error) {
           console.error(error.message);
           throw Boom.internal();
         }
+
+        if (participant === undefined) {
+          throw Boom.unauthorized();
+        }
+
+        return h.authenticated({ credentials: { participant } });
       },
     })
   );
@@ -164,10 +168,17 @@ export const init = async (): Promise<Server> => {
 
       const keyPair: ec.KeyPair = getKeyPairFromPrivateKey(privateKey);
       const publicKey: string = keyPair.getPublic("hex");
-      const participant: Participant = await getParticipantByPublicKey(
-        sequelizeClient,
-        publicKey
-      );
+
+      let participant: Participant;
+      try {
+        participant = await getParticipantByPublicKey(
+          sequelizeClient,
+          publicKey
+        );
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
 
       const serverSecret = getServerSecret();
 
@@ -206,11 +217,15 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      const { count, rows } = await getBlocks(
-        sequelizeClient,
-        pageNumber,
-        pageSize
-      );
+      let response: { count: number; rows: Block[]};
+      try {
+        response = await getBlocks(sequelizeClient, pageNumber, pageSize);
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      const { count, rows } = response;
 
       return await buildBlocksSerializer(count, pageNumber, pageSize).serialize(
         rows
@@ -227,9 +242,15 @@ export const init = async (): Promise<Server> => {
     handler: async (request, h) => {
       const { blockId } = request.params;
 
-      const block = await getBlockById(sequelizeClient, blockId);
+      let block: Block;
+      try {
+        block = await getBlockById(sequelizeClient, blockId);
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
 
-      if (!block) {
+      if (block === undefined) {
         throw Boom.notFound();
       }
 
@@ -257,20 +278,21 @@ export const init = async (): Promise<Server> => {
         ...payload.data.attributes,
       } as Block;
 
+      let createdBlock: Block;
       try {
-        const createdBlock = await createBlock(
+        createdBlock = await createBlock(
           sequelizeClient,
           newBlock,
           minerPublicKey
         );
-
-        // todo - notify known blocks that a new block was added
-
-        return buildBlockSerializer().serialize(createdBlock);
       } catch (error) {
         console.error(error.message);
         throw Boom.internal();
       }
+
+      // todo - notify known blocks that a new block was added
+
+      return buildBlockSerializer().serialize(createdBlock);
     },
   });
 
@@ -292,13 +314,21 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      const { count, rows } = await getPendingTransactions(
-        sequelizeClient,
-        pageNumber,
-        pageSize,
-        filterFrom,
-        filterTo
-      );
+      let response: { count: number; rows: Transaction[]};
+      try {
+        response = await getPendingTransactions(
+          sequelizeClient,
+          pageNumber,
+          pageSize,
+          filterFrom,
+          filterTo
+        );
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      const { count, rows } = response;
 
       return await buildPendingTransactionsSerializer(
         count,
@@ -317,12 +347,18 @@ export const init = async (): Promise<Server> => {
     handler: async (request) => {
       const { pendingTransactionId } = request.params;
 
-      const pendingTransaction: Transaction = await getPendingTransactionById(
-        sequelizeClient,
-        pendingTransactionId
-      );
+      let pendingTransaction: Transaction;
+      try {
+        pendingTransaction = await getPendingTransactionById(
+          sequelizeClient,
+          pendingTransactionId
+        );
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
 
-      if (!pendingTransaction) {
+      if (pendingTransaction === undefined) {
         throw Boom.notFound();
       }
 
@@ -379,11 +415,19 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      const { count, rows } = await getSignedTransactions(
-        sequelizeClient,
-        pageNumber,
-        pageSize
-      );
+      let response: { count: number; rows: Transaction[]};
+      try {
+        response = await getSignedTransactions(
+          sequelizeClient,
+          pageNumber,
+          pageSize
+        );
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      const { count, rows } = response;
 
       return await buildSignedTransactionsSerializer(
         count,
@@ -402,12 +446,18 @@ export const init = async (): Promise<Server> => {
     handler: async (request) => {
       const { signedTransactionId } = request.params;
 
-      const signedTransaction: Transaction = await getSignedTransactionById(
-        sequelizeClient,
-        signedTransactionId
-      );
+      let signedTransaction: Transaction;
+      try {
+        signedTransaction = await getSignedTransactionById(
+          sequelizeClient,
+          signedTransactionId
+        );
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
 
-      if (!signedTransaction) {
+      if (signedTransaction === undefined) {
         throw Boom.notFound();
       }
 
@@ -462,14 +512,32 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      const block: Block = await getBlockById(sequelizeClient, blockId);
+      let block: Block;
+      try {
+        block = await getBlockById(sequelizeClient, blockId);
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
 
-      const { count, rows } = await getBlockTransactions(
-        sequelizeClient,
-        pageNumber,
-        pageSize,
-        blockId
-      );
+      if (block === undefined) {
+        throw Boom.notFound();
+      }
+
+      let response: { count: number; rows: Transaction[]};
+      try {
+        response = await getBlockTransactions(
+          sequelizeClient,
+          pageNumber,
+          pageSize,
+          blockId
+        );
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      const { count, rows } = response;
 
       return await buildBlockTransactionsSerializer(
         block,
@@ -489,12 +557,33 @@ export const init = async (): Promise<Server> => {
     handler: async (request) => {
       const { blockId, transactionId } = request.params;
 
-      const block: Block = await getBlockById(sequelizeClient, blockId);
-      const blockTransaction: Transaction = await getBlockTransactionById(
-        sequelizeClient,
-        blockId,
-        transactionId
-      );
+      let block: Block;
+      try {
+        block = await getBlockById(sequelizeClient, blockId);
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      if (block === undefined) {
+        throw Boom.notFound();
+      }
+
+      let blockTransaction: Transaction;
+      try {
+        blockTransaction = await getBlockTransactionById(
+          sequelizeClient,
+          blockId,
+          transactionId
+        );
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      if (blockTransaction === undefined) {
+        throw Boom.notFound();
+      }
 
       return buildBlockTransactionSerializer(block).serialize(blockTransaction);
     },
@@ -517,12 +606,20 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      const { count, rows } = await getParticipants(
-        sequelizeClient,
-        pageNumber,
-        pageSize,
-        filterPublicKey
-      );
+      let response: { count: number; rows: Participant[]};
+      try {
+        response = await getParticipants(
+          sequelizeClient,
+          pageNumber,
+          pageSize,
+          filterPublicKey
+        );
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      const { count, rows } = response;
 
       return buildParticipantsSerializer(count, pageNumber, pageSize).serialize(
         rows
@@ -539,10 +636,17 @@ export const init = async (): Promise<Server> => {
     handler: async (request) => {
       const { participantId } = request.params;
 
-      const participant: Participant = await getParticipantById(
-        sequelizeClient,
-        participantId
-      );
+      let participant: Participant;
+      try {
+        participant = await getParticipantById(sequelizeClient, participantId);
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      if (participant === undefined) {
+        throw Boom.notFound();
+      }
 
       return buildParticipantSerializer().serialize(participant);
     },
@@ -567,25 +671,26 @@ export const init = async (): Promise<Server> => {
         key: { public: participantKey.public },
       };
 
+      let createdParticipant: Participant;
       try {
-        const createdParticipant: Participant = await createParticipant(
+        createdParticipant = await createParticipant(
           sequelizeClient,
           newParticipant
         );
-
-        // todo - notify known participants that a new participant was added
-
-        return buildParticipantSerializer().serialize({
-          ...createdParticipant,
-          key: {
-            public: createdParticipant.key.public,
-            private: participantKey.private,
-          },
-        });
       } catch (error) {
         console.error(error.message);
         throw Boom.internal();
       }
+
+      // todo - notify known participants that a new participant was added
+
+      return buildParticipantSerializer().serialize({
+        ...createdParticipant,
+        key: {
+          public: createdParticipant.key.public,
+          private: participantKey.private,
+        },
+      });
     },
   });
 
@@ -605,11 +710,15 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      const { count, rows } = await getNodes(
-        sequelizeClient,
-        pageNumber,
-        pageSize
-      );
+      let response: { count: number; rows: Node[]};
+      try {
+        response = await getNodes(sequelizeClient, pageNumber, pageSize);
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      const { count, rows } = response;
 
       return buildNodesSerializer(count, pageNumber, pageSize).serialize(rows);
     },
@@ -624,7 +733,17 @@ export const init = async (): Promise<Server> => {
     handler: async (request) => {
       const { nodeId } = request.params;
 
-      const node: Node = await getNodeById(sequelizeClient, nodeId);
+      let node: Node;
+      try {
+        node = await getNodeById(sequelizeClient, nodeId);
+      } catch (error) {
+        console.error(error.message);
+        throw Boom.internal();
+      }
+
+      if (node === undefined) {
+        throw Boom.notFound();
+      }
 
       return buildNodeSerializer().serialize(node);
     },
@@ -648,16 +767,17 @@ export const init = async (): Promise<Server> => {
         ...payload.data.attributes,
       } as Node;
 
+      let createdNode: Node;
       try {
-        const createdNode: Node = await createNode(sequelizeClient, newNode);
-
-        // todo - notify known nodes that a new node was added
-
-        return buildNodeSerializer().serialize(createdNode);
+        createdNode = await createNode(sequelizeClient, newNode);
       } catch (error) {
         console.error(error.message);
         throw Boom.internal();
       }
+
+      // todo - notify known nodes that a new node was added
+
+      return buildNodeSerializer().serialize(createdNode);
     },
   });
 
