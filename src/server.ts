@@ -483,17 +483,22 @@ export const init = async (): Promise<Server> => {
         ...payload.data.attributes,
       } as Transaction;
 
+      let createdSignedTransaction: Transaction;
       try {
-        const createdSignedTransaction: Transaction =
-          await createSignedTransaction(sequelizeClient, newSignedTransaction);
-
-        return buildSignedTransactionSerializer().serialize(
-          createdSignedTransaction
+        createdSignedTransaction = await createSignedTransaction(
+          sequelizeClient,
+          newSignedTransaction
         );
       } catch (error) {
         console.error(error.message);
         throw Boom.internal();
       }
+
+      // todo - when the number of signed transactions reaches a threshold, automatically mine a new block
+
+      return buildSignedTransactionSerializer().serialize(
+        createdSignedTransaction
+      );
     },
   });
 

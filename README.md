@@ -22,7 +22,17 @@ Hot rebuild when `src` changes
 
 `npm run build && todd-coin`
 
+## To Start the Local Postgres Database
+
+`npm run start-db`
+
+## To Stop the Local Postgres Database
+
+`npm run stop-db`
+
 ## To Run the todd-coin Node locally
+
+Note: the Todd Coin api will try to connect to a running PostgresDB instance.
 
 `npm run build && npm run start`
 
