@@ -55,7 +55,6 @@ import { getServerSecret } from "./environment-utils";
 // todo - dockerize the server
 // todo - unit tests
 // todo - mobile app
-// todo - enable cors
 // todo - register new volunteer, charity and node participant
 // todo - add update participant
 // todo - add update node
@@ -73,6 +72,9 @@ export const init = async (): Promise<Server> => {
   server = Hapi.server({
     port: PORT,
     host: HOST,
+    routes: {
+      cors: true,
+    },
   });
 
   server.auth.scheme(
@@ -217,7 +219,7 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      let response: { count: number; rows: Block[]};
+      let response: { count: number; rows: Block[] };
       try {
         response = await getBlocks(sequelizeClient, pageNumber, pageSize);
       } catch (error) {
@@ -314,7 +316,7 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      let response: { count: number; rows: Transaction[]};
+      let response: { count: number; rows: Transaction[] };
       try {
         response = await getPendingTransactions(
           sequelizeClient,
@@ -415,7 +417,7 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      let response: { count: number; rows: Transaction[]};
+      let response: { count: number; rows: Transaction[] };
       try {
         response = await getSignedTransactions(
           sequelizeClient,
@@ -524,7 +526,7 @@ export const init = async (): Promise<Server> => {
         throw Boom.notFound();
       }
 
-      let response: { count: number; rows: Transaction[]};
+      let response: { count: number; rows: Transaction[] };
       try {
         response = await getBlockTransactions(
           sequelizeClient,
@@ -606,7 +608,7 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      let response: { count: number; rows: Participant[]};
+      let response: { count: number; rows: Participant[] };
       try {
         response = await getParticipants(
           sequelizeClient,
@@ -710,7 +712,7 @@ export const init = async (): Promise<Server> => {
 
       // todo - validate the input
 
-      let response: { count: number; rows: Node[]};
+      let response: { count: number; rows: Node[] };
       try {
         response = await getNodes(sequelizeClient, pageNumber, pageSize);
       } catch (error) {
