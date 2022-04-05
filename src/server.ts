@@ -58,7 +58,7 @@ import { getServerSecret } from "./environment-utils";
 // todo - register new volunteer, charity and node participant
 // todo - add update participant
 // todo - add update node
-// todo - add a charity resource and association with participants (name, address, email, url, phone number, etc.)
+// todo - add a organization resource and a participant-organization association (name, address, email, url, phone number, role, etc.)
 // todo - add a license
 // todo - add github participant and pull request files
 // todo - serialize errors to match json:api standards
