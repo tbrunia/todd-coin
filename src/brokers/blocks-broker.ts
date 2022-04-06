@@ -88,19 +88,19 @@ export const createBlock = async (
     const transactionModel = sequelizeClient.getTransactionModel();
 
     await Promise.all(
-        newBlock.transactions.map((transaction: Transaction) => {
-          return transactionModel.update(
-              {
-                type: "block",
-                blockId: newBlock.id,
-              },
-              {
-                where: {
-                  id: transaction.id,
-                },
-              }
-          );
-        })
+      newBlock.transactions.map((transaction: Transaction) => {
+        return transactionModel.update(
+          {
+            type: "block",
+            blockId: newBlock.id,
+          },
+          {
+            where: {
+              id: transaction.id,
+            },
+          }
+        );
+      })
     );
 
     await transactionModel.create({
@@ -113,13 +113,13 @@ export const createBlock = async (
 
     const dbBlock = model.get();
 
-    const {rows} = await getBlockTransactions(
-        sequelizeClient,
-        0,
-        MAX_TRANSACTIONS_PER_BLOCK,
-        dbBlock.id
+    const { rows } = await getBlockTransactions(
+      sequelizeClient,
+      0,
+      MAX_TRANSACTIONS_PER_BLOCK,
+      dbBlock.id
     );
 
-    return {...map(dbBlock), transactions: rows};
+    return { ...map(dbBlock), transactions: rows };
   });
 };

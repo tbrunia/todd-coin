@@ -212,7 +212,9 @@ export class SequelizeClient {
     return this.blockModel;
   }
 
-  async transaction<T>(autoCallback: (t: sequelize.Transaction) => PromiseLike<T>): Promise<T> {
-      return await this.sequelize.transaction<T>(autoCallback);
+  async transaction<T>(
+    autoCallback: (t: sequelize.Transaction) => PromiseLike<T>
+  ): Promise<T> {
+    return await this.sequelize.transaction<T>(autoCallback);
   }
 }

@@ -2,7 +2,12 @@
 
 import { ApiData, Block, Node, Participant, Transaction } from "./types";
 import * as Hapi from "@hapi/hapi";
-import { Request, Server, ServerAuthSchemeObject } from "@hapi/hapi";
+import {
+  Request,
+  ResponseToolkit,
+  Server,
+  ServerAuthSchemeObject,
+} from "@hapi/hapi";
 import * as Boom from "@hapi/boom";
 import {
   DEFAULT_PAGE_SIZE,
@@ -61,9 +66,25 @@ import { getServerSecret } from "./environment-utils";
 // todo - add a organization resource and a participant-organization association (name, address, email, url, phone number, role, etc.)
 // todo - add a license
 // todo - add github participant and pull request files
-// todo - serialize errors to match json:api standards
 
 export let server: Server;
+
+const buildUnauthorizedError = (detail: string) => {
+  let authError = Boom.unauthorized();
+  const title = "Unauthorized";
+  authError.output.payload.errors = [
+    {
+      status: authError.output.statusCode,
+      title,
+      detail,
+    },
+  ];
+  delete authError.output.payload.statusCode;
+  delete authError.output.payload.error;
+  delete authError.output.payload.message;
+
+  return authError;
+};
 
 export const init = async (): Promise<Server> => {
   const sequelizeClient = new SequelizeClient();
@@ -80,16 +101,32 @@ export const init = async (): Promise<Server> => {
   server.auth.scheme(
     "custom",
     (): ServerAuthSchemeObject => ({
-      authenticate: async (request: Request, h) => {
+      authenticate: async (request: Request, h: ResponseToolkit) => {
         const accessTokenWithBearer = request.headers[
           "authorization"
         ] as string;
 
-        if (accessTokenWithBearer === undefined) {
-          throw Boom.unauthorized("authorization header required");
+        const bearerPrefix = "bearer ";
+
+        if (
+          accessTokenWithBearer === undefined ||
+          accessTokenWithBearer.length < bearerPrefix.length
+        ) {
+          throw buildUnauthorizedError("Authorization header is required.");
         }
 
-        const accessToken = accessTokenWithBearer.substring("bearer ".length);
+        const accessToken = accessTokenWithBearer.substring(
+          bearerPrefix.length
+        );
+
+        const serverSecret = getServerSecret();
+
+        try {
+          jwt.verify(accessToken, serverSecret);
+        } catch (error) {
+          console.error(error.message);
+          throw buildUnauthorizedError("Unable to verify token.");
+        }
 
         let participantId: string = undefined;
         let exp: number = undefined;
@@ -101,20 +138,12 @@ export const init = async (): Promise<Server> => {
           participantId = decode.participantId;
           exp = decode.exp;
         } catch (error) {
-          throw Boom.unauthorized(error.message);
+          console.error(error.message);
+          throw buildUnauthorizedError("Unable to decode token.");
         }
 
         if (Math.floor(Date.now() / 1000) > exp) {
-          throw Boom.unauthorized("token expired");
-        }
-
-        const serverSecret = getServerSecret();
-
-        try {
-          jwt.verify(accessToken, serverSecret);
-        } catch (error) {
-          console.error(error.message);
-          throw Boom.unauthorized(error.message);
+          throw buildUnauthorizedError("Token is expired");
         }
 
         let participant: Participant;
@@ -125,11 +154,15 @@ export const init = async (): Promise<Server> => {
           );
         } catch (error) {
           console.error(error.message);
-          throw Boom.internal();
+          throw buildUnauthorizedError(
+            `Unable to get participant with id: ${participantId}.`
+          );
         }
 
         if (participant === undefined) {
-          throw Boom.unauthorized();
+          throw buildUnauthorizedError(
+            `Participant with id: ${participantId} was not found.`
+          );
         }
 
         return h.authenticated({ credentials: { participant } });
@@ -142,7 +175,7 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "GET",
     path: "/",
-    handler: (request, h) => {
+    handler: () => {
       return {
         links: {
           home: `${PROTOCOL}://${HOST}:${PORT}`,
@@ -164,7 +197,7 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "POST",
     path: "/auth/token",
-    handler: async (request, h) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { privateKey: string };
       const { privateKey } = payload;
 
@@ -179,7 +212,16 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       const serverSecret = getServerSecret();
@@ -198,7 +240,16 @@ export const init = async (): Promise<Server> => {
         };
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
     },
   });
@@ -211,7 +262,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request, h) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
@@ -224,7 +275,16 @@ export const init = async (): Promise<Server> => {
         response = await getBlocks(sequelizeClient, pageNumber, pageSize);
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       const { count, rows } = response;
@@ -241,7 +301,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request, h) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const { blockId } = request.params;
 
       let block: Block;
@@ -249,11 +309,30 @@ export const init = async (): Promise<Server> => {
         block = await getBlockById(sequelizeClient, blockId);
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       if (block === undefined) {
-        throw Boom.notFound();
+        return h
+          .response({
+            errors: [
+              {
+                status: "404",
+                title: "Not Found",
+                detail: `A block with id: ${blockId} was not found.`,
+              },
+            ],
+          })
+          .code(404);
       }
 
       return await buildBlockSerializer().serialize(block);
@@ -266,7 +345,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the block
@@ -289,7 +368,16 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       // todo - notify known blocks that a new block was added
@@ -306,7 +394,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
@@ -327,7 +415,16 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       const { count, rows } = response;
@@ -346,7 +443,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const { pendingTransactionId } = request.params;
 
       let pendingTransaction: Transaction;
@@ -357,11 +454,30 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       if (pendingTransaction === undefined) {
-        throw Boom.notFound();
+        return h
+          .response({
+            errors: [
+              {
+                status: "404",
+                title: "Not Found",
+                detail: `A pending transaction with id: ${pendingTransactionId} was not found.`,
+              },
+            ],
+          })
+          .code(404);
       }
 
       return buildPendingTransactionSerializer().serialize(pendingTransaction);
@@ -374,7 +490,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request: Request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the pending transaction
@@ -396,7 +512,16 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
     },
   });
@@ -409,7 +534,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
@@ -426,7 +551,16 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       const { count, rows } = response;
@@ -445,7 +579,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const { signedTransactionId } = request.params;
 
       let signedTransaction: Transaction;
@@ -456,11 +590,30 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       if (signedTransaction === undefined) {
-        throw Boom.notFound();
+        return h
+          .response({
+            errors: [
+              {
+                status: "404",
+                title: "Not Found",
+                detail: `A signed transaction with id: ${signedTransactionId} was not found.`,
+              },
+            ],
+          })
+          .code(404);
       }
 
       return buildSignedTransactionSerializer().serialize(signedTransaction);
@@ -473,7 +626,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request: Request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the signed transaction
@@ -491,7 +644,16 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       // todo - when the number of signed transactions reaches a threshold, automatically mine a new block
@@ -510,7 +672,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const { blockId } = request.params;
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
@@ -524,11 +686,30 @@ export const init = async (): Promise<Server> => {
         block = await getBlockById(sequelizeClient, blockId);
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       if (block === undefined) {
-        throw Boom.notFound();
+        return h
+          .response({
+            errors: [
+              {
+                status: "404",
+                title: "Not Found",
+                detail: `A block with id: ${blockId} was not found.`,
+              },
+            ],
+          })
+          .code(404);
       }
 
       let response: { count: number; rows: Transaction[] };
@@ -541,7 +722,16 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       const { count, rows } = response;
@@ -557,23 +747,42 @@ export const init = async (): Promise<Server> => {
 
   server.route({
     method: "GET",
-    path: "/blocks/{blockId}/transactions/{transactionId}",
+    path: "/blocks/{blockId}/transactions/{blockTransactionId}",
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
-      const { blockId, transactionId } = request.params;
+    handler: async (request: Request, h: ResponseToolkit) => {
+      const { blockId, blockTransactionId } = request.params;
 
       let block: Block;
       try {
         block = await getBlockById(sequelizeClient, blockId);
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       if (block === undefined) {
-        throw Boom.notFound();
+        return h
+          .response({
+            errors: [
+              {
+                status: "404",
+                title: "Not Found",
+                detail: `A block with id: ${blockId} was not found.`,
+              },
+            ],
+          })
+          .code(404);
       }
 
       let blockTransaction: Transaction;
@@ -581,15 +790,34 @@ export const init = async (): Promise<Server> => {
         blockTransaction = await getBlockTransactionById(
           sequelizeClient,
           blockId,
-          transactionId
+          blockTransactionId
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       if (blockTransaction === undefined) {
-        throw Boom.notFound();
+        return h
+          .response({
+            errors: [
+              {
+                status: "404",
+                title: "Not Found",
+                detail: `A block transaction with id: ${blockTransactionId} was not found.`,
+              },
+            ],
+          })
+          .code(404);
       }
 
       return buildBlockTransactionSerializer(block).serialize(blockTransaction);
@@ -604,7 +832,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
@@ -623,7 +851,16 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       const { count, rows } = response;
@@ -640,7 +877,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const { participantId } = request.params;
 
       let participant: Participant;
@@ -648,11 +885,30 @@ export const init = async (): Promise<Server> => {
         participant = await getParticipantById(sequelizeClient, participantId);
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       if (participant === undefined) {
-        throw Boom.notFound();
+        return h
+          .response({
+            errors: [
+              {
+                status: "404",
+                title: "Not Found",
+                detail: `A participant with id: ${participantId} was not found.`,
+              },
+            ],
+          })
+          .code(404);
       }
 
       return buildParticipantSerializer().serialize(participant);
@@ -665,7 +921,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request: Request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the new participant
@@ -686,7 +942,16 @@ export const init = async (): Promise<Server> => {
         );
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       // todo - notify known participants that a new participant was added
@@ -709,7 +974,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
       const pageSize: number =
@@ -722,7 +987,16 @@ export const init = async (): Promise<Server> => {
         response = await getNodes(sequelizeClient, pageNumber, pageSize);
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       const { count, rows } = response;
@@ -737,7 +1011,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const { nodeId } = request.params;
 
       let node: Node;
@@ -745,11 +1019,30 @@ export const init = async (): Promise<Server> => {
         node = await getNodeById(sequelizeClient, nodeId);
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       if (node === undefined) {
-        throw Boom.notFound();
+        return h
+          .response({
+            errors: [
+              {
+                status: "404",
+                title: "Not Found",
+                detail: `A node with id: ${nodeId} was not found.`,
+              },
+            ],
+          })
+          .code(404);
       }
 
       return buildNodeSerializer().serialize(node);
@@ -762,7 +1055,7 @@ export const init = async (): Promise<Server> => {
     options: {
       auth: "custom",
     },
-    handler: async (request: Request) => {
+    handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - validate the new node
@@ -779,7 +1072,16 @@ export const init = async (): Promise<Server> => {
         createdNode = await createNode(sequelizeClient, newNode);
       } catch (error) {
         console.error(error.message);
-        throw Boom.internal();
+        return h
+          .response({
+            errors: [
+              {
+                status: "500",
+                title: "Internal Server Error",
+              },
+            ],
+          })
+          .code(500);
       }
 
       // todo - notify known nodes that a new node was added
