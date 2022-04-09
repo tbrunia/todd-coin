@@ -52,4 +52,5 @@ export interface Node {
 export interface ApiData {
   id: string;
   attributes: Record<string, string | number | boolean | object>;
+  relationships: Record<string, string | number | boolean | object>;
 }

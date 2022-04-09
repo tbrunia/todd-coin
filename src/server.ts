@@ -56,6 +56,25 @@ import { createNode, getNodeById, getNodes } from "./brokers/nodes-broker";
 import { ec } from "elliptic";
 import jwt from "jsonwebtoken";
 import { getServerSecret } from "./environment-utils";
+import { ValidationErrorItem } from "joi";
+import {
+  AUTH_SCHEMA,
+  BLOCK_ID_SCHEMA,
+  BLOCK_SCHEMA,
+  NODE_SCHEMA,
+  PARTICIPANT_SCHEMA,
+  PENDING_TRANSACTION_SCHEMA,
+  SIGNED_TRANSACTION_SCHEMA,
+  PENDING_TRANSACTION_ID_SCHEMA,
+  BLOCK_TRANSACTION_ID_SCHEMA,
+  SIGNED_TRANSACTION_ID_SCHEMA,
+  PARTICIPANT_ID_SCHEMA,
+  NODE_ID_SCHEMA,
+  PAGE_NUMBER_SCHEMA,
+  PAGE_SIZE_SCHEMA,
+  PUBLIC_KEY_SCHEMA,
+  FROM_SCHEMA,
+} from "./services/validation-schemas";
 
 // todo - dockerize the server
 // todo - unit tests
@@ -66,6 +85,7 @@ import { getServerSecret } from "./environment-utils";
 // todo - add a organization resource and a participant-organization association (name, address, email, url, phone number, role, etc.)
 // todo - add a license
 // todo - add github participant and pull request files
+// todo - clean up the input validation (too much repeated code)
 
 export let server: Server;
 
@@ -84,6 +104,27 @@ const buildUnauthorizedError = (detail: string) => {
   delete authError.output.payload.message;
 
   return authError;
+};
+
+const buildPointer = (errorItem: ValidationErrorItem): string => {
+  let label = "";
+  for (const segment of errorItem.path) {
+    if (typeof segment === "object") {
+      continue;
+    }
+
+    if (typeof segment === "string") {
+      if (label) {
+        label += ".";
+      }
+
+      label += segment;
+    } else {
+      label += `[${segment}]`;
+    }
+  }
+
+  return label;
 };
 
 export const init = async (): Promise<Server> => {
@@ -199,7 +240,29 @@ export const init = async (): Promise<Server> => {
     path: "/auth/token",
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { privateKey: string };
-      const { privateKey } = payload;
+
+      const { error, value } = AUTH_SCHEMA.validate(payload, {
+        abortEarly: false,
+      });
+
+      if (error !== undefined) {
+        return h
+          .response({
+            errors: error.details.map((errorItem: ValidationErrorItem) => ({
+              status: "400",
+              title: "Invalid Attribute",
+              source: {
+                pointer: buildPointer(errorItem),
+              },
+              description: errorItem.message,
+            })),
+          })
+          .code(400);
+      }
+
+      const validatedPayload = value;
+
+      const { privateKey } = validatedPayload;
 
       const keyPair: ec.KeyPair = getKeyPairFromPrivateKey(privateKey);
       const publicKey: string = keyPair.getPublic("hex");
@@ -265,14 +328,56 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
+
+      const pageNumberValidationResult =
+        PAGE_NUMBER_SCHEMA.validate(pageNumber);
+
+      if (pageNumberValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageNumberValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[number]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageNumber = pageNumberValidationResult.value;
+
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      // todo - validate the input
+      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
+
+      if (pageSizeValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageSizeValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[size]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageSize = pageSizeValidationResult.value;
 
       let response: { count: number; rows: Block[] };
       try {
-        response = await getBlocks(sequelizeClient, pageNumber, pageSize);
+        response = await getBlocks(
+          sequelizeClient,
+          validatedPageNumber,
+          validatedPageSize
+        );
       } catch (error) {
         console.error(error.message);
         return h
@@ -289,9 +394,11 @@ export const init = async (): Promise<Server> => {
 
       const { count, rows } = response;
 
-      return await buildBlocksSerializer(count, pageNumber, pageSize).serialize(
-        rows
-      );
+      return await buildBlocksSerializer(
+        count,
+        validatedPageNumber,
+        validatedPageSize
+      ).serialize(rows);
     },
   });
 
@@ -304,9 +411,27 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const { blockId } = request.params;
 
+      const blockIdValidationResult = BLOCK_ID_SCHEMA.validate(blockId);
+
+      if (blockIdValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: blockIdValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Path Parameter",
+                description: errorItem.message,
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedBlockId = blockIdValidationResult.value;
+
       let block: Block;
       try {
-        block = await getBlockById(sequelizeClient, blockId);
+        block = await getBlockById(sequelizeClient, validatedBlockId);
       } catch (error) {
         console.error(error.message);
         return h
@@ -328,7 +453,7 @@ export const init = async (): Promise<Server> => {
               {
                 status: "404",
                 title: "Not Found",
-                detail: `A block with id: ${blockId} was not found.`,
+                detail: `A block with id: ${validatedBlockId} was not found.`,
               },
             ],
           })
@@ -348,15 +473,37 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
-      // todo - validate the block
-      // todo - enforce the maximum number of transactions per block
+      const { error, value } = BLOCK_SCHEMA.validate(payload, {
+        abortEarly: false,
+      });
+
+      if (error !== undefined) {
+        return h
+          .response({
+            errors: error.details.map((errorItem: ValidationErrorItem) => ({
+              status: "400",
+              title: "Invalid Attribute",
+              source: {
+                pointer: buildPointer(errorItem),
+              },
+              description: errorItem.message,
+            })),
+          })
+          .code(400);
+      }
+
+      const validatedPayload = value;
 
       const participant = request.auth.credentials.participant as Participant;
       const minerPublicKey = participant.key.public;
 
       const newBlock = {
-        id: payload.data.id,
-        ...payload.data.attributes,
+        id: validatedPayload.data.id,
+        ...validatedPayload.data.attributes,
+        transactions: validatedPayload.data.relationships.transactions.map((transactionData: { data: ApiData }) => ({
+          id: transactionData.data.id,
+          ...transactionData.data.attributes,
+        })),
       } as Block;
 
       let createdBlock: Block;
@@ -397,21 +544,99 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
+
+      const pageNumberValidationResult =
+        PAGE_NUMBER_SCHEMA.validate(pageNumber);
+
+      if (pageNumberValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageNumberValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[number]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageNumber = pageNumberValidationResult.value;
+
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
-      const filterFrom: string = request.query["filter[from]"];
-      const filterTo: string = request.query["filter[to]"];
 
-      // todo - validate the input
+      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
+
+      if (pageSizeValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageSizeValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[size]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageSize = pageSizeValidationResult.value;
+
+      const fromFilter: string = request.query["filter[from]"];
+
+      const fromFilterValidationResult = FROM_SCHEMA.validate(fromFilter);
+
+      if (fromFilterValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: fromFilterValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "filter[from]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedFromFilter = fromFilterValidationResult.value;
+
+      const toFilter: string = request.query["filter[to]"];
+
+      const toFilterValidationResult = FROM_SCHEMA.validate(toFilter);
+
+      if (toFilterValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: toFilterValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "filter[to]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedToFilter = toFilterValidationResult.value;
 
       let response: { count: number; rows: Transaction[] };
       try {
         response = await getPendingTransactions(
           sequelizeClient,
-          pageNumber,
-          pageSize,
-          filterFrom,
-          filterTo
+          validatedPageNumber,
+          validatedPageSize,
+          validatedFromFilter,
+          validatedToFilter
         );
       } catch (error) {
         console.error(error.message);
@@ -431,8 +656,8 @@ export const init = async (): Promise<Server> => {
 
       return await buildPendingTransactionsSerializer(
         count,
-        pageNumber,
-        pageSize
+        validatedPageNumber,
+        validatedPageSize
       ).serialize(rows);
     },
   });
@@ -446,11 +671,31 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const { pendingTransactionId } = request.params;
 
+      const pendingTransactionIdValidationResult =
+        PENDING_TRANSACTION_ID_SCHEMA.validate(pendingTransactionId);
+
+      if (pendingTransactionIdValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pendingTransactionIdValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Path Parameter",
+                description: errorItem.message,
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPendingTransactionId =
+        pendingTransactionIdValidationResult.value;
+
       let pendingTransaction: Transaction;
       try {
         pendingTransaction = await getPendingTransactionById(
           sequelizeClient,
-          pendingTransactionId
+          validatedPendingTransactionId
         );
       } catch (error) {
         console.error(error.message);
@@ -473,7 +718,7 @@ export const init = async (): Promise<Server> => {
               {
                 status: "404",
                 title: "Not Found",
-                detail: `A pending transaction with id: ${pendingTransactionId} was not found.`,
+                detail: `A pending transaction with id: ${validatedPendingTransactionId} was not found.`,
               },
             ],
           })
@@ -493,11 +738,30 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
-      // todo - validate the pending transaction
+      const { error, value } = PENDING_TRANSACTION_SCHEMA.validate(payload, {
+        abortEarly: false,
+      });
+
+      if (error !== undefined) {
+        return h
+          .response({
+            errors: error.details.map((errorItem: ValidationErrorItem) => ({
+              status: "400",
+              title: "Invalid Attribute",
+              source: {
+                pointer: buildPointer(errorItem),
+              },
+              description: errorItem.message,
+            })),
+          })
+          .code(400);
+      }
+
+      const validatedPayload = value;
 
       const newPendingTransaction = {
-        id: payload.data.id,
-        ...payload.data.attributes,
+        id: validatedPayload.data.id,
+        ...validatedPayload.data.attributes,
       } as Transaction;
 
       try {
@@ -537,17 +801,55 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
+
+      const pageNumberValidationResult =
+        PAGE_NUMBER_SCHEMA.validate(pageNumber);
+
+      if (pageNumberValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageNumberValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[number]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageNumber = pageNumberValidationResult.value;
+
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      // todo - validate the input
+      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
+
+      if (pageSizeValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageSizeValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[size]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageSize = pageSizeValidationResult.value;
 
       let response: { count: number; rows: Transaction[] };
       try {
         response = await getSignedTransactions(
           sequelizeClient,
-          pageNumber,
-          pageSize
+          validatedPageNumber,
+          validatedPageSize
         );
       } catch (error) {
         console.error(error.message);
@@ -567,8 +869,8 @@ export const init = async (): Promise<Server> => {
 
       return await buildSignedTransactionsSerializer(
         count,
-        pageNumber,
-        pageSize
+        validatedPageNumber,
+        validatedPageSize
       ).serialize(rows);
     },
   });
@@ -582,11 +884,31 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const { signedTransactionId } = request.params;
 
+      const signedTransactionIdValidationResult =
+        SIGNED_TRANSACTION_ID_SCHEMA.validate(signedTransactionId);
+
+      if (signedTransactionIdValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: signedTransactionIdValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Path Parameter",
+                description: errorItem.message,
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedSignedTransactionId =
+        signedTransactionIdValidationResult.value;
+
       let signedTransaction: Transaction;
       try {
         signedTransaction = await getSignedTransactionById(
           sequelizeClient,
-          signedTransactionId
+          validatedSignedTransactionId
         );
       } catch (error) {
         console.error(error.message);
@@ -609,7 +931,7 @@ export const init = async (): Promise<Server> => {
               {
                 status: "404",
                 title: "Not Found",
-                detail: `A signed transaction with id: ${signedTransactionId} was not found.`,
+                detail: `A signed transaction with id: ${validatedSignedTransactionId} was not found.`,
               },
             ],
           })
@@ -629,11 +951,30 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
-      // todo - validate the signed transaction
+      const { error, value } = SIGNED_TRANSACTION_SCHEMA.validate(payload, {
+        abortEarly: false,
+      });
+
+      if (error !== undefined) {
+        return h
+          .response({
+            errors: error.details.map((errorItem: ValidationErrorItem) => ({
+              status: "400",
+              title: "Invalid Attribute",
+              source: {
+                pointer: buildPointer(errorItem),
+              },
+              description: errorItem.message,
+            })),
+          })
+          .code(400);
+      }
+
+      const validatedPayload = value;
 
       const newSignedTransaction = {
-        id: payload.data.id,
-        ...payload.data.attributes,
+        id: validatedPayload.data.id,
+        ...validatedPayload.data.attributes,
       } as Transaction;
 
       let createdSignedTransaction: Transaction;
@@ -676,14 +1017,70 @@ export const init = async (): Promise<Server> => {
       const { blockId } = request.params;
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
+
+      const pageNumberValidationResult =
+        PAGE_NUMBER_SCHEMA.validate(pageNumber);
+
+      if (pageNumberValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageNumberValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[number]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageNumber = pageNumberValidationResult.value;
+
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      // todo - validate the input
+      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
+
+      if (pageSizeValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageSizeValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[size]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageSize = pageSizeValidationResult.value;
+
+      const blockIdValidationResult = BLOCK_ID_SCHEMA.validate(blockId);
+
+      if (blockIdValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: blockIdValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Path Parameter",
+                description: errorItem.message,
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedBlockId = blockIdValidationResult.value;
 
       let block: Block;
       try {
-        block = await getBlockById(sequelizeClient, blockId);
+        block = await getBlockById(sequelizeClient, validatedBlockId);
       } catch (error) {
         console.error(error.message);
         return h
@@ -705,7 +1102,7 @@ export const init = async (): Promise<Server> => {
               {
                 status: "404",
                 title: "Not Found",
-                detail: `A block with id: ${blockId} was not found.`,
+                detail: `A block with id: ${validatedBlockId} was not found.`,
               },
             ],
           })
@@ -716,8 +1113,8 @@ export const init = async (): Promise<Server> => {
       try {
         response = await getBlockTransactions(
           sequelizeClient,
-          pageNumber,
-          pageSize,
+          validatedPageNumber,
+          validatedPageSize,
           blockId
         );
       } catch (error) {
@@ -739,8 +1136,8 @@ export const init = async (): Promise<Server> => {
       return await buildBlockTransactionsSerializer(
         block,
         count,
-        pageNumber,
-        pageSize
+        validatedPageNumber,
+        validatedPageSize
       ).serialize(rows);
     },
   });
@@ -754,9 +1151,47 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const { blockId, blockTransactionId } = request.params;
 
+      const blockIdValidationResult = BLOCK_ID_SCHEMA.validate(blockId);
+
+      if (blockIdValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: blockIdValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Path Parameter",
+                description: errorItem.message,
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedBlockId = blockIdValidationResult.value;
+
+      const blockTransactionIdValidationResult =
+        BLOCK_TRANSACTION_ID_SCHEMA.validate(blockTransactionId);
+
+      if (blockTransactionIdValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: blockTransactionIdValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Path Parameter",
+                description: errorItem.message,
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedBlockTransactionId =
+        blockTransactionIdValidationResult.value;
+
       let block: Block;
       try {
-        block = await getBlockById(sequelizeClient, blockId);
+        block = await getBlockById(sequelizeClient, validatedBlockId);
       } catch (error) {
         console.error(error.message);
         return h
@@ -778,7 +1213,7 @@ export const init = async (): Promise<Server> => {
               {
                 status: "404",
                 title: "Not Found",
-                detail: `A block with id: ${blockId} was not found.`,
+                detail: `A block with id: ${validatedBlockId} was not found.`,
               },
             ],
           })
@@ -789,8 +1224,8 @@ export const init = async (): Promise<Server> => {
       try {
         blockTransaction = await getBlockTransactionById(
           sequelizeClient,
-          blockId,
-          blockTransactionId
+          validatedBlockId,
+          validatedBlockTransactionId
         );
       } catch (error) {
         console.error(error.message);
@@ -813,7 +1248,7 @@ export const init = async (): Promise<Server> => {
               {
                 status: "404",
                 title: "Not Found",
-                detail: `A block transaction with id: ${blockTransactionId} was not found.`,
+                detail: `A block transaction with id: ${validatedBlockTransactionId} was not found.`,
               },
             ],
           })
@@ -835,19 +1270,78 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
+
+      const pageNumberValidationResult =
+        PAGE_NUMBER_SCHEMA.validate(pageNumber);
+
+      if (pageNumberValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageNumberValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[number]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageNumber = pageNumberValidationResult.value;
+
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
-      const filterPublicKey: string = request.query["filter[publicKey]"];
 
-      // todo - validate the input
+      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
+
+      if (pageSizeValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageSizeValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[size]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageSize = pageSizeValidationResult.value;
+
+      const publicKeyFilter: string = request.query["filter[publicKey]"];
+
+      const publicKeyFilterValidationResult =
+        PUBLIC_KEY_SCHEMA.validate(publicKeyFilter);
+
+      if (publicKeyFilterValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: publicKeyFilterValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "filter[publicKey]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPublicKeyFilter = publicKeyFilterValidationResult.value;
 
       let response: { count: number; rows: Participant[] };
       try {
         response = await getParticipants(
           sequelizeClient,
-          pageNumber,
-          pageSize,
-          filterPublicKey
+          validatedPageNumber,
+          validatedPageSize,
+          validatedPublicKeyFilter
         );
       } catch (error) {
         console.error(error.message);
@@ -865,9 +1359,11 @@ export const init = async (): Promise<Server> => {
 
       const { count, rows } = response;
 
-      return buildParticipantsSerializer(count, pageNumber, pageSize).serialize(
-        rows
-      );
+      return buildParticipantsSerializer(
+        count,
+        validatedPageNumber,
+        validatedPageSize
+      ).serialize(rows);
     },
   });
 
@@ -880,9 +1376,31 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const { participantId } = request.params;
 
+      const participantIdValidationResult =
+        PARTICIPANT_ID_SCHEMA.validate(participantId);
+
+      if (participantIdValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: participantIdValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Path Parameter",
+                description: errorItem.message,
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedParticipantId = participantIdValidationResult.value;
+
       let participant: Participant;
       try {
-        participant = await getParticipantById(sequelizeClient, participantId);
+        participant = await getParticipantById(
+          sequelizeClient,
+          validatedParticipantId
+        );
       } catch (error) {
         console.error(error.message);
         return h
@@ -904,7 +1422,7 @@ export const init = async (): Promise<Server> => {
               {
                 status: "404",
                 title: "Not Found",
-                detail: `A participant with id: ${participantId} was not found.`,
+                detail: `A participant with id: ${validatedParticipantId} was not found.`,
               },
             ],
           })
@@ -924,13 +1442,34 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
-      // todo - validate the new participant
+      // todo - check for dupe participants
+
+      const { error, value } = PARTICIPANT_SCHEMA.validate(payload, {
+        abortEarly: false,
+      });
+
+      const validatedPayload = value;
+
+      if (error !== undefined) {
+        return h
+          .response({
+            errors: error.details.map((errorItem: ValidationErrorItem) => ({
+              status: "400",
+              title: "Invalid Attribute",
+              source: {
+                pointer: buildPointer(errorItem),
+              },
+              description: errorItem.message,
+            })),
+          })
+          .code(400);
+      }
 
       const participantKey = generateParticipantKey();
 
       const newParticipant = {
-        id: payload.data.id,
-        ...payload.data.attributes,
+        id: validatedPayload.data.id,
+        ...validatedPayload.data.attributes,
         key: { public: participantKey.public },
       };
 
@@ -977,14 +1516,56 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
+
+      const pageNumberValidationResult =
+        PAGE_NUMBER_SCHEMA.validate(pageNumber);
+
+      if (pageNumberValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageNumberValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[number]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageNumber = pageNumberValidationResult.value;
+
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      // todo - validate the input
+      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
+
+      if (pageSizeValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: pageSizeValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Query Parameter",
+                description: errorItem.message,
+                parameter: "page[size]",
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedPageSize = pageSizeValidationResult.value;
 
       let response: { count: number; rows: Node[] };
       try {
-        response = await getNodes(sequelizeClient, pageNumber, pageSize);
+        response = await getNodes(
+          sequelizeClient,
+          validatedPageNumber,
+          validatedPageSize
+        );
       } catch (error) {
         console.error(error.message);
         return h
@@ -1001,7 +1582,11 @@ export const init = async (): Promise<Server> => {
 
       const { count, rows } = response;
 
-      return buildNodesSerializer(count, pageNumber, pageSize).serialize(rows);
+      return buildNodesSerializer(
+        count,
+        validatedPageNumber,
+        validatedPageSize
+      ).serialize(rows);
     },
   });
 
@@ -1014,9 +1599,27 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const { nodeId } = request.params;
 
+      const nodeIdValidationResult = NODE_ID_SCHEMA.validate(nodeId);
+
+      if (nodeIdValidationResult.error !== undefined) {
+        return h
+          .response({
+            errors: nodeIdValidationResult.error.details.map(
+              (errorItem: ValidationErrorItem) => ({
+                status: "400",
+                title: "Invalid Path Parameter",
+                description: errorItem.message,
+              })
+            ),
+          })
+          .code(400);
+      }
+
+      const validatedNodeId = nodeIdValidationResult.value;
+
       let node: Node;
       try {
-        node = await getNodeById(sequelizeClient, nodeId);
+        node = await getNodeById(sequelizeClient, validatedNodeId);
       } catch (error) {
         console.error(error.message);
         return h
@@ -1038,7 +1641,7 @@ export const init = async (): Promise<Server> => {
               {
                 status: "404",
                 title: "Not Found",
-                detail: `A node with id: ${nodeId} was not found.`,
+                detail: `A node with id: ${validatedNodeId} was not found.`,
               },
             ],
           })
@@ -1058,13 +1661,34 @@ export const init = async (): Promise<Server> => {
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
-      // todo - validate the new node
+      // todo - check for dupe nodes
+
+      const { error, value } = NODE_SCHEMA.validate(payload, {
+        abortEarly: false,
+      });
+
+      if (error !== undefined) {
+        return h
+          .response({
+            errors: error.details.map((errorItem: ValidationErrorItem) => ({
+              status: "400",
+              title: "Invalid Attribute",
+              source: {
+                pointer: buildPointer(errorItem),
+              },
+              description: errorItem.message,
+            })),
+          })
+          .code(400);
+      }
+
+      const validatedPayload = value;
 
       // todo - once validated, sync up with the new node
 
       const newNode: Node = {
-        id: payload.data.id,
-        ...payload.data.attributes,
+        id: validatedPayload.data.id,
+        ...validatedPayload.data.attributes,
       } as Node;
 
       let createdNode: Node;
