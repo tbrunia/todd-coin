@@ -1,10 +1,6 @@
-export const getDatabaseSettings = (): {
-  database: string;
-  username: string;
-  password: string;
-  dbHost: string;
-  dbPort: number;
-} => {
+import { ApiSettings, DatabaseSettings } from "./types";
+
+export const getDatabaseSettings = (): DatabaseSettings => {
   const database = process.env.DB_NAME || "todd-coin";
   const username = process.env.DB_USERNAME || "postgres";
   const password = process.env.DB_PASSWORD || "secret";
@@ -14,19 +10,19 @@ export const getDatabaseSettings = (): {
   return { database, username, password, dbHost, dbPort };
 };
 
-export const getApiSettings = (): {
-  jwtSecretKey: string;
-  apiHost: string;
-  apiPort: number;
-} => {
+export const getApiSettings = (): ApiSettings => {
   const jwtSecretKey =
     process.env.JWT_SIGNING_SECRET || "all your base are belong to us";
   const apiHost = process.env.API_HOST || "localhost";
   const apiPort = Number(process.env.API_PORT) || 3000;
+  const apiProtocol = process.env.API_PROTOCOL || "http";
+  const apiBaseUrl = process.env.API_BASE_URL || "http://localhost:3000";
 
   return {
     jwtSecretKey,
+    apiProtocol,
     apiHost,
     apiPort,
+    apiBaseUrl,
   };
 };

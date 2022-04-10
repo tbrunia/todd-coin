@@ -5,6 +5,8 @@ import {
   createGenesisParticipant,
 } from "../services/block-utils";
 
+const { Client } = require("pg");
+
 export class SequelizeClient {
   private sequelize: sequelize.Sequelize;
   private nodeModel;
@@ -19,6 +21,22 @@ export class SequelizeClient {
     host: string,
     port: number
   ) {
+    let client;
+    try {
+      client = new Client({
+        user: username,
+        password,
+        host,
+        port,
+      });
+      await client.connect();
+      await client.query(`CREATE DATABASE "${database}"`);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      await client.end();
+    }
+
     this.sequelize = new sequelize.Sequelize(database, username, password, {
       host,
       port,

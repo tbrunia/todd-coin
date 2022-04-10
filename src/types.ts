@@ -1,3 +1,19 @@
+export interface ApiSettings {
+  jwtSecretKey: string;
+  apiProtocol: string;
+  apiHost: string;
+  apiPort: number;
+  apiBaseUrl: string;
+}
+
+export interface DatabaseSettings {
+  database: string;
+  username: string;
+  password: string;
+  dbHost: string;
+  dbPort: number;
+}
+
 export interface ParticipantKey {
   public: string;
   private?: string;

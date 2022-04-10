@@ -1,6 +1,13 @@
 "use strict";
 
-import { ApiData, Block, Node, Participant, Transaction } from "./types";
+import {
+  ApiData,
+  ApiSettings,
+  Block,
+  Node,
+  Participant,
+  Transaction,
+} from "./types";
 import * as Hapi from "@hapi/hapi";
 import {
   Request,
@@ -9,13 +16,7 @@ import {
   ServerAuthSchemeObject,
 } from "@hapi/hapi";
 import * as Boom from "@hapi/boom";
-import {
-  DEFAULT_PAGE_SIZE,
-  FIRST_PAGE,
-  HOST,
-  PORT,
-  PROTOCOL,
-} from "./constants";
+import { DEFAULT_PAGE_SIZE, FIRST_PAGE } from "./constants";
 import {
   generateParticipantKey,
   getKeyPairFromPrivateKey,
@@ -90,6 +91,7 @@ import {
 // todo - publish api to docker registry
 // todo - publish cli to npm
 // todo - split up api, cli and modules
+// todo - write a regression test suite
 
 export let server: Server;
 
@@ -292,14 +294,16 @@ export const init = async (): Promise<Server> => {
     method: "GET",
     path: "/",
     handler: () => {
+      const apiSettings: ApiSettings = getApiSettings();
+      const { apiBaseUrl } = apiSettings;
+
       return {
         links: {
-          home: `${PROTOCOL}://${HOST}:${PORT}`,
-          blocks: `${PROTOCOL}://${HOST}:${PORT}/blocks`,
-          nodes: `${PROTOCOL}://${HOST}:${PORT}/nodes`,
-          participants: `${PROTOCOL}://${HOST}:${PORT}/participants`,
-          pendingTransactions: `${PROTOCOL}://${HOST}:${PORT}/pending-transactions`,
-          self: `${PROTOCOL}://${HOST}:${PORT}`,
+          self: apiBaseUrl,
+          blocks: `${apiBaseUrl}/blocks`,
+          nodes: `${apiBaseUrl}/nodes`,
+          participants: `${apiBaseUrl}/participants`,
+          pendingTransactions: `${apiBaseUrl}/pending-transactions`,
         },
         data: {
           description: "I'm a todd-coin node.",
@@ -432,9 +436,12 @@ export const init = async (): Promise<Server> => {
 
       const { count, rows } = response;
 
-      return await buildBlocksSerializer(count, pageNumber, pageSize).serialize(
-        rows
-      );
+      return await buildBlocksSerializer(
+        getApiSettings(),
+        count,
+        pageNumber,
+        pageSize
+      ).serialize(rows);
     },
   });
 
@@ -489,7 +496,7 @@ export const init = async (): Promise<Server> => {
           .code(404);
       }
 
-      return await buildBlockSerializer().serialize(block);
+      return await buildBlockSerializer(getApiSettings()).serialize(block);
     },
   });
 
@@ -565,7 +572,7 @@ export const init = async (): Promise<Server> => {
 
       // todo - notify known blocks that a new block was added
 
-      return buildBlockSerializer().serialize(createdBlock);
+      return buildBlockSerializer(getApiSettings()).serialize(createdBlock);
     },
   });
 
@@ -629,6 +636,7 @@ export const init = async (): Promise<Server> => {
       const { count, rows } = response;
 
       return await buildPendingTransactionsSerializer(
+        getApiSettings(),
         count,
         pageNumber,
         pageSize
@@ -692,7 +700,9 @@ export const init = async (): Promise<Server> => {
           .code(404);
       }
 
-      return buildPendingTransactionSerializer().serialize(pendingTransaction);
+      return buildPendingTransactionSerializer(getApiSettings()).serialize(
+        pendingTransaction
+      );
     },
   });
 
@@ -739,7 +749,7 @@ export const init = async (): Promise<Server> => {
             newPendingTransaction
           );
 
-        return buildPendingTransactionSerializer().serialize(
+        return buildPendingTransactionSerializer(getApiSettings()).serialize(
           createdPendingTransaction
         );
       } catch (error) {
@@ -807,6 +817,7 @@ export const init = async (): Promise<Server> => {
       const { count, rows } = response;
 
       return await buildSignedTransactionsSerializer(
+        getApiSettings(),
         count,
         pageNumber,
         pageSize
@@ -870,7 +881,9 @@ export const init = async (): Promise<Server> => {
           .code(404);
       }
 
-      return buildSignedTransactionSerializer().serialize(signedTransaction);
+      return buildSignedTransactionSerializer(getApiSettings()).serialize(
+        signedTransaction
+      );
     },
   });
 
@@ -925,7 +938,7 @@ export const init = async (): Promise<Server> => {
 
       // todo - when the number of signed transactions reaches a threshold, automatically mine a new block
 
-      return buildSignedTransactionSerializer().serialize(
+      return buildSignedTransactionSerializer(getApiSettings()).serialize(
         createdSignedTransaction
       );
     },
@@ -1015,6 +1028,7 @@ export const init = async (): Promise<Server> => {
       const { count, rows } = response;
 
       return await buildBlockTransactionsSerializer(
+        getApiSettings(),
         block,
         count,
         pageNumber,
@@ -1103,7 +1117,9 @@ export const init = async (): Promise<Server> => {
           .code(404);
       }
 
-      return buildBlockTransactionSerializer(block).serialize(blockTransaction);
+      return buildBlockTransactionSerializer(getApiSettings(), block).serialize(
+        blockTransaction
+      );
     },
   });
 
@@ -1163,9 +1179,12 @@ export const init = async (): Promise<Server> => {
 
       const { count, rows } = response;
 
-      return buildParticipantsSerializer(count, pageNumber, pageSize).serialize(
-        rows
-      );
+      return buildParticipantsSerializer(
+        getApiSettings(),
+        count,
+        pageNumber,
+        pageSize
+      ).serialize(rows);
     },
   });
 
@@ -1222,7 +1241,9 @@ export const init = async (): Promise<Server> => {
           .code(404);
       }
 
-      return buildParticipantSerializer().serialize(participant);
+      return buildParticipantSerializer(getApiSettings()).serialize(
+        participant
+      );
     },
   });
 
@@ -1282,7 +1303,7 @@ export const init = async (): Promise<Server> => {
 
       // todo - notify known participants that a new participant was added
 
-      return buildParticipantSerializer().serialize({
+      return buildParticipantSerializer(getApiSettings()).serialize({
         ...createdParticipant,
         key: {
           public: createdParticipant.key.public,
@@ -1341,7 +1362,12 @@ export const init = async (): Promise<Server> => {
 
       const { count, rows } = response;
 
-      return buildNodesSerializer(count, pageNumber, pageSize).serialize(rows);
+      return buildNodesSerializer(
+        getApiSettings(),
+        count,
+        pageNumber,
+        pageSize
+      ).serialize(rows);
     },
   });
 
@@ -1396,7 +1422,7 @@ export const init = async (): Promise<Server> => {
           .code(404);
       }
 
-      return buildNodeSerializer().serialize(node);
+      return buildNodeSerializer(getApiSettings()).serialize(node);
     },
   });
 
@@ -1452,7 +1478,7 @@ export const init = async (): Promise<Server> => {
 
       // todo - notify known nodes that a new node was added
 
-      return buildNodeSerializer().serialize(createdNode);
+      return buildNodeSerializer(getApiSettings()).serialize(createdNode);
     },
   });
 
