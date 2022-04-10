@@ -1,4 +1,5 @@
 dist
+insomnia
 node_modules
 pgdata
 .gitignore
