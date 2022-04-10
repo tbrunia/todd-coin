@@ -67,7 +67,9 @@ export const GET_BLOCK_TRANSACTION_PARAMETERS_SCHEMA = Joi.object({
 });
 
 export const GET_PARTICIPANTS_QUERY_SCHEMA = PAGINATION_QUERY_SCHEMA.keys({
-  "filter[publicKey]": Joi.string().regex(PUBLIC_KEY_REGEX).label("Public Key Filter")
+  "filter[publicKey]": Joi.string()
+    .regex(PUBLIC_KEY_REGEX)
+    .label("Public Key Filter"),
 });
 
 export const GET_PARTICIPANT_PARAMETERS_SCHEMA = Joi.object({

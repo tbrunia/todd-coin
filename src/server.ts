@@ -72,7 +72,8 @@ import {
   GET_PENDING_TRANSACTIONS_QUERY_SCHEMA,
   GET_SIGNED_TRANSACTION_PARAMETERS_SCHEMA,
   GET_SIGNED_TRANSACTIONS_QUERY_SCHEMA,
-  POST_BLOCK_SCHEMA, POST_NODE_SCHEMA,
+  POST_BLOCK_SCHEMA,
+  POST_NODE_SCHEMA,
   POST_PARTICIPANT_SCHEMA,
   POST_PENDING_TRANSACTION_SCHEMA,
   POST_SIGNED_TRANSACTION_SCHEMA,
@@ -189,9 +190,12 @@ export const init = async (): Promise<Server> => {
           accessTokenWithBearer === undefined ||
           accessTokenWithBearer.length < BEARER_PREFIX.length
         ) {
-          return h.response({
-            errors: buildUnauthorizedError("Authorization header is required."),
-          })
+          return h
+            .response({
+              errors: buildUnauthorizedError(
+                "Authorization header is required."
+              ),
+            })
             .code(401)
             .takeover();
         }
@@ -206,9 +210,10 @@ export const init = async (): Promise<Server> => {
           jwt.verify(accessToken, serverSecret);
         } catch (error) {
           console.error(error.message);
-          return h.response({
-            errors: buildUnauthorizedError("Unable to verify token."),
-          })
+          return h
+            .response({
+              errors: buildUnauthorizedError("Unable to verify token."),
+            })
             .code(401)
             .takeover();
         }
@@ -224,17 +229,19 @@ export const init = async (): Promise<Server> => {
           exp = decode.exp;
         } catch (error) {
           console.error(error.message);
-          return h.response({
-            errors: buildUnauthorizedError("Unable to decode token."),
-          })
+          return h
+            .response({
+              errors: buildUnauthorizedError("Unable to decode token."),
+            })
             .code(401)
             .takeover();
         }
 
         if (Math.floor(Date.now() / 1000) > exp) {
-          return h.response({
-            errors: buildUnauthorizedError("Token is expired"),
-          })
+          return h
+            .response({
+              errors: buildUnauthorizedError("Token is expired"),
+            })
             .code(401)
             .takeover();
         }
@@ -247,21 +254,23 @@ export const init = async (): Promise<Server> => {
           );
         } catch (error) {
           console.error(error.message);
-          return h.response({
-            errors: buildUnauthorizedError(
-              `Unable to get participant with id: ${participantId}.`
-            ),
-          })
+          return h
+            .response({
+              errors: buildUnauthorizedError(
+                `Unable to get participant with id: ${participantId}.`
+              ),
+            })
             .code(401)
             .takeover();
         }
 
         if (participant === undefined) {
-          return h.response({
-            errors: buildUnauthorizedError(
-              `Participant with id: ${participantId} was not found.`
-            ),
-          })
+          return h
+            .response({
+              errors: buildUnauthorizedError(
+                `Participant with id: ${participantId} was not found.`
+              ),
+            })
             .code(401)
             .takeover();
         }
@@ -1017,18 +1026,18 @@ export const init = async (): Promise<Server> => {
           abortEarly: false,
         },
         failAction: (
-            request: Request,
-            h: ResponseToolkit,
-            error: (Boom.Boom & ValidationError) | undefined
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
         ) => {
           return h
-              .response({
-                errors: error.details.map((errorItem: ValidationErrorItem) =>
-                    buildInvalidParameterError(errorItem)
-                ),
-              })
-              .code(error.output.statusCode)
-              .takeover();
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidParameterError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
         },
       },
     },
@@ -1103,18 +1112,18 @@ export const init = async (): Promise<Server> => {
           abortEarly: false,
         },
         failAction: (
-            request: Request,
-            h: ResponseToolkit,
-            error: (Boom.Boom & ValidationError) | undefined
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
         ) => {
           return h
-              .response({
-                errors: error.details.map((errorItem: ValidationErrorItem) =>
-                    buildInvalidQueryError(errorItem)
-                ),
-              })
-              .code(error.output.statusCode)
-              .takeover();
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidQueryError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
         },
       },
     },
@@ -1163,18 +1172,18 @@ export const init = async (): Promise<Server> => {
           abortEarly: false,
         },
         failAction: (
-            request: Request,
-            h: ResponseToolkit,
-            error: (Boom.Boom & ValidationError) | undefined
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
         ) => {
           return h
-              .response({
-                errors: error.details.map((errorItem: ValidationErrorItem) =>
-                    buildInvalidParameterError(errorItem)
-                ),
-              })
-              .code(error.output.statusCode)
-              .takeover();
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidParameterError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
         },
       },
     },
@@ -1220,18 +1229,18 @@ export const init = async (): Promise<Server> => {
           abortEarly: false,
         },
         failAction: (
-            request: Request,
-            h: ResponseToolkit,
-            error: (Boom.Boom & ValidationError) | undefined
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
         ) => {
           return h
-              .response({
-                errors: error.details.map((errorItem: ValidationErrorItem) =>
-                    buildInvalidAttributeError(errorItem)
-                ),
-              })
-              .code(error.output.statusCode)
-              .takeover();
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidAttributeError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
         },
       },
     },
@@ -1288,18 +1297,18 @@ export const init = async (): Promise<Server> => {
           abortEarly: false,
         },
         failAction: (
-            request: Request,
-            h: ResponseToolkit,
-            error: (Boom.Boom & ValidationError) | undefined
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
         ) => {
           return h
-              .response({
-                errors: error.details.map((errorItem: ValidationErrorItem) =>
-                    buildInvalidQueryError(errorItem)
-                ),
-              })
-              .code(error.output.statusCode)
-              .takeover();
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidQueryError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
         },
       },
     },
@@ -1339,18 +1348,18 @@ export const init = async (): Promise<Server> => {
           abortEarly: false,
         },
         failAction: (
-            request: Request,
-            h: ResponseToolkit,
-            error: (Boom.Boom & ValidationError) | undefined
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
         ) => {
           return h
-              .response({
-                errors: error.details.map((errorItem: ValidationErrorItem) =>
-                    buildInvalidParameterError(errorItem)
-                ),
-              })
-              .code(error.output.statusCode)
-              .takeover();
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidParameterError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
         },
       },
     },
@@ -1394,18 +1403,18 @@ export const init = async (): Promise<Server> => {
           abortEarly: false,
         },
         failAction: (
-            request: Request,
-            h: ResponseToolkit,
-            error: (Boom.Boom & ValidationError) | undefined
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
         ) => {
           return h
-              .response({
-                errors: error.details.map((errorItem: ValidationErrorItem) =>
-                    buildInvalidAttributeError(errorItem)
-                ),
-              })
-              .code(error.output.statusCode)
-              .takeover();
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidAttributeError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
         },
       },
     },
