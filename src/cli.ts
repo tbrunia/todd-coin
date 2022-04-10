@@ -32,7 +32,7 @@ const getBlockTransactions = async (
   })) as Transaction[];
 };
 
-// TODO - paginate blocks
+// todo - paginate blocks
 
 const getBlocks = async (): Promise<Block[]> => {
   const blocksResponse: AxiosResponse<{
@@ -148,7 +148,7 @@ yargs(hideBin(process.argv))
       const isValid: boolean = isChainValid(blocks);
 
       if (isValid) {
-        // TODO - save a validated page number
+        // todo - save a validated page number, so you only have to validate a small portion of the chain
         console.log("Looks good!");
       } else {
         console.log("Something's not right.");

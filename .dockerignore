@@ -1,0 +1,8 @@
+dist
+node_modules
+pgdata
+.gitignore
+docker-compose.yml
+LICENCE
+private-keys.txt
+README.md

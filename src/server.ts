@@ -55,7 +55,7 @@ import {
 import { createNode, getNodeById, getNodes } from "./brokers/nodes-broker";
 import { ec } from "elliptic";
 import jwt from "jsonwebtoken";
-import { getServerSecret } from "./environment-utils";
+import { getApiSettings, getDatabaseSettings } from "./environment-utils";
 import { ValidationError, ValidationErrorItem } from "joi";
 import {
   AUTH_SCHEMA,
@@ -79,7 +79,6 @@ import {
   POST_SIGNED_TRANSACTION_SCHEMA,
 } from "./services/validation-schemas";
 
-// todo - dockerize the server
 // todo - unit tests
 // todo - mobile app
 // todo - register new volunteer, charity and node participant
@@ -87,8 +86,7 @@ import {
 // todo - add update node
 // todo - add a organization resource and a participant-organization association (name, address, email, url, phone number, role, etc.)
 // todo - update pending transactions - for canceling them
-// todo - add github participant and pull request files
-// todo - clean up the input validation (too much repeated code)
+// todo - add github contribution and pull request template files
 
 export let server: Server;
 
@@ -166,11 +164,16 @@ const buildNofFountError = (detail: string) => {
 
 export const init = async (): Promise<Server> => {
   const sequelizeClient = new SequelizeClient();
-  await sequelizeClient.init();
+  const { database, username, password, dbHost, dbPort } =
+    getDatabaseSettings();
+
+  await sequelizeClient.init(database, username, password, dbHost, dbPort);
+
+  const { apiPort, apiHost } = getApiSettings();
 
   server = Hapi.server({
-    port: PORT,
-    host: HOST,
+    port: apiPort,
+    host: apiHost,
     routes: {
       cors: true,
     },
@@ -204,10 +207,10 @@ export const init = async (): Promise<Server> => {
           BEARER_PREFIX.length
         );
 
-        const serverSecret = getServerSecret();
+        const { jwtSecretKey } = getApiSettings();
 
         try {
-          jwt.verify(accessToken, serverSecret);
+          jwt.verify(accessToken, jwtSecretKey);
         } catch (error) {
           console.error(error.message);
           return h
@@ -352,14 +355,14 @@ export const init = async (): Promise<Server> => {
           .code(500);
       }
 
-      const serverSecret = getServerSecret();
+      const { jwtSecretKey } = getApiSettings();
 
       try {
         const accessToken = jwt.sign(
           {
             participantId: participant.id,
           },
-          serverSecret,
+          jwtSecretKey,
           { expiresIn: "1h" }
         );
 
@@ -723,6 +726,8 @@ export const init = async (): Promise<Server> => {
         id: payload.data.id,
         ...payload.data.attributes,
       } as Transaction;
+
+      // todo - check for duplicate pending transactions (rules?)
 
       try {
         const createdPendingTransaction: Transaction =

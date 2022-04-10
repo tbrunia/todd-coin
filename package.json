@@ -3,13 +3,18 @@
   "description": "The Todd Coin Cryptocurrency",
   "scripts": {
     "build": "tsc",
+    "docker-build": "docker build -t tbrunia/todd-coin:latest .",
+    "docker-scan": "docker scan tbrunia/todd-coin:latest",
+    "docker-start": "docker-compose -f docker-compose.yml up -d",
+    "docker-restart": "docker-compose -f docker-compose.yml restart",
+    "docker-stop": "docker-compose -f docker-compose.yml down",
+    "docker-logs": "docker-compose logs -f",
     "clean": "rm -rf ./dist",
     "format": "prettier --write .",
     "open": "open http://localhost:3000",
     "start": "node ./dist/index.js",
-    "start-db": "docker-compose -f docker-compose.yml up",
-    "stop-db": "docker-compose -f docker-compose.yml down",
-    "watch": "nodemon --watch src -e ts --exec \"npm run build && npm run start\""
+    "watch": "nodemon --watch src -e ts --exec \"npm run build && npm run start\"",
+    "verify": "echo \"nothing to do yet\""
   },
   "bin": {
     "todd-coin": "./dist/cli.js"
@@ -26,7 +31,7 @@
     "lodash": "^4.17.21",
     "pg": "^8.7.3",
     "pg-hstore": "^2.3.4",
-    "sequelize": "^6.17.0",
+    "sequelize": "^6.18.0",
     "ts-japi": "^1.6.1",
     "uuid": "^8.3.2",
     "yargs": "^17.3.1"

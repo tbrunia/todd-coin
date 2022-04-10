@@ -4,7 +4,6 @@ import {
   createGenesisBlock,
   createGenesisParticipant,
 } from "../services/block-utils";
-import { getDatabaseSettings } from "./environment-utils";
 
 export class SequelizeClient {
   private sequelize: sequelize.Sequelize;
@@ -13,9 +12,13 @@ export class SequelizeClient {
   private transactionModel;
   private blockModel;
 
-  async init() {
-    const { database, username, password, host, port } = getDatabaseSettings();
-
+  async init(
+    database: string,
+    username: string,
+    password: string,
+    host: string,
+    port: number
+  ) {
     this.sequelize = new sequelize.Sequelize(database, username, password, {
       host,
       port,
