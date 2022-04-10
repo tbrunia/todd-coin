@@ -85,7 +85,7 @@ import {
 // todo - add update participant
 // todo - add update node
 // todo - add a organization resource and a participant-organization association (name, address, email, url, phone number, role, etc.)
-// todo - add a license
+// todo - update pending transactions - for canceling them
 // todo - add github participant and pull request files
 // todo - clean up the input validation (too much repeated code)
 
@@ -529,6 +529,8 @@ export const init = async (): Promise<Server> => {
           })
         ),
       } as Block;
+
+      // todo - validate that the new block can be added to the chain. return bad request if not
 
       let createdBlock: Block;
       try {
