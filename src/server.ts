@@ -86,6 +86,10 @@ import {
 // todo - add update pending transactions - for canceling them
 // todo - add a organization resource and a participant-organization association (name, address, email, url, phone number, role, etc.)
 // todo - add github contribution and pull request template files
+// todo - ci
+// todo - publish api to docker registry
+// todo - publish cli to npm
+// todo - split up api, cli and modules
 
 export let server: Server;
 
