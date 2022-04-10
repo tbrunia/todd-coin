@@ -1,5 +1,5 @@
 import Joi from "joi";
-import {MAX_TRANSACTIONS_PER_BLOCK, MAXIMUM_PAGE_SIZE} from "../constants";
+import { MAX_TRANSACTIONS_PER_BLOCK, MAXIMUM_PAGE_SIZE } from "../constants";
 
 const HASH_REGEX = /^([a-z0-9]){64}$/;
 const PRIVATE_KEY_REGEX = /^([a-z0-9]){64}$/;
@@ -25,29 +25,62 @@ const BASE_TRANSACTION = Joi.object({
   description: Joi.string().min(1).max(512).label("Description"),
 });
 
-export const BLOCK_ID_SCHEMA = Joi.string().guid().label("Block ID");
+const PAGINATION_QUERY_SCHEMA = Joi.object({
+  "page[number]": Joi.number()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .label("Page Number"),
+  "page[size]": Joi.number().min(1).max(MAXIMUM_PAGE_SIZE).label("Page Size"),
+});
 
-export const PENDING_TRANSACTION_ID_SCHEMA = Joi.string().guid().label("Pending Transaction ID");
+export const GET_BLOCKS_QUERY_SCHEMA = PAGINATION_QUERY_SCHEMA;
 
-export const SIGNED_TRANSACTION_ID_SCHEMA = Joi.string().guid().label("Signed Transaction ID");
+export const GET_BLOCK_PARAMETERS_SCHEMA = Joi.object({
+  blockId: Joi.string().guid().label("Block ID"),
+});
 
-export const BLOCK_TRANSACTION_ID_SCHEMA = Joi.string().guid().label("Block Transaction ID");
+export const GET_PENDING_TRANSACTIONS_QUERY_SCHEMA =
+  PAGINATION_QUERY_SCHEMA.keys({
+    "filter[from]": Joi.string().regex(PUBLIC_KEY_REGEX).label("From Filter"),
+    "filter[to]": Joi.string().regex(PUBLIC_KEY_REGEX).label("To Filter"),
+  });
 
-export const PARTICIPANT_ID_SCHEMA = Joi.string().guid().label("Participant ID");
+export const GET_PENDING_TRANSACTION_PARAMETERS_SCHEMA = Joi.object({
+  pendingTransactionId: Joi.string().guid().label("Pending Transaction ID"),
+});
 
-export const NODE_ID_SCHEMA = Joi.string().guid().label("Node ID");
+export const GET_SIGNED_TRANSACTIONS_QUERY_SCHEMA = PAGINATION_QUERY_SCHEMA;
 
-export const PAGE_NUMBER_SCHEMA = Joi.number().min(0).max(Number.MAX_SAFE_INTEGER).label("Page Number");
+export const GET_SIGNED_TRANSACTION_PARAMETERS_SCHEMA = Joi.object({
+  signedTransactionId: Joi.string().guid().label("Signed Transaction ID"),
+});
 
-export const PAGE_SIZE_SCHEMA = Joi.number().min(1).max(MAXIMUM_PAGE_SIZE).label("Page Number");
+export const GET_BLOCK_TRANSACTIONS_QUERY_SCHEMA = PAGINATION_QUERY_SCHEMA;
 
-export const FROM_SCHEMA = Joi.string().regex(PUBLIC_KEY_REGEX).label("From");
+export const GET_BLOCK_TRANSACTIONS_PARAMETERS_SCHEMA = Joi.object({
+  blockId: Joi.string().guid().label("Block ID"),
+});
 
-export const TO_SCHEMA = Joi.string().regex(PUBLIC_KEY_REGEX).label("To");
+export const GET_BLOCK_TRANSACTION_PARAMETERS_SCHEMA = Joi.object({
+  blockId: Joi.string().guid().label("Block ID"),
+  blockTransactionId: Joi.string().guid().label("Block Transaction ID"),
+});
 
-export const PUBLIC_KEY_SCHEMA = Joi.string().regex(PUBLIC_KEY_REGEX).label("Public Key");
+export const GET_PARTICIPANTS_QUERY_SCHEMA = PAGINATION_QUERY_SCHEMA.keys({
+  "filter[publicKey]": Joi.string().regex(PUBLIC_KEY_REGEX).label("Public Key Filter")
+});
 
-export const PENDING_TRANSACTION_SCHEMA = Joi.object({
+export const GET_PARTICIPANT_PARAMETERS_SCHEMA = Joi.object({
+  participantId: Joi.string().guid().label("Participant ID"),
+});
+
+export const GET_NODES_QUERY_SCHEMA = PAGINATION_QUERY_SCHEMA;
+
+export const GET_NODE_PARAMETERS_SCHEMA = Joi.object({
+  nodeId: Joi.string().guid().label("Node ID"),
+});
+
+export const POST_PENDING_TRANSACTION_SCHEMA = Joi.object({
   data: Joi.object({
     attributes: BASE_TRANSACTION.unknown(false).required().label("Attributes"),
   })
@@ -56,22 +89,25 @@ export const PENDING_TRANSACTION_SCHEMA = Joi.object({
     .label("Data"),
 }).unknown(false);
 
-export const SIGNED_TRANSACTION_SCHEMA = Joi.object({
+export const POST_SIGNED_TRANSACTION_SCHEMA = Joi.object({
   data: Joi.object({
     id: Joi.string().guid().required().label("ID"),
     attributes: BASE_TRANSACTION.keys({
       signature: Joi.string()
-          .pattern(SIGNATURE_REGEX)
-          .required()
-          .label("Signature"),
-    }).unknown(false).required().label("Attributes"),
-  })
+        .pattern(SIGNATURE_REGEX)
+        .required()
+        .label("Signature"),
+    })
       .unknown(false)
       .required()
-      .label("Data"),
+      .label("Attributes"),
+  })
+    .unknown(false)
+    .required()
+    .label("Data"),
 }).unknown(false);
 
-export const BLOCK_SCHEMA = Joi.object({
+export const POST_BLOCK_SCHEMA = Joi.object({
   data: Joi.object({
     id: Joi.string().guid().required().label("ID"),
     attributes: Joi.object({
@@ -92,7 +128,7 @@ export const BLOCK_SCHEMA = Joi.object({
       .label("Attributes"),
     relationships: Joi.object({
       transactions: Joi.array()
-        .items(SIGNED_TRANSACTION_SCHEMA)
+        .items(POST_SIGNED_TRANSACTION_SCHEMA)
         .min(1)
         .max(MAX_TRANSACTIONS_PER_BLOCK)
         .required()
@@ -107,7 +143,7 @@ export const BLOCK_SCHEMA = Joi.object({
     .label("Data"),
 }).unknown(false);
 
-export const PARTICIPANT_SCHEMA = Joi.object({
+export const POST_PARTICIPANT_SCHEMA = Joi.object({
   data: Joi.object({
     attributes: Joi.object({
       firstName: Joi.string().min(3).max(100).label("First Name"),
@@ -136,7 +172,7 @@ export const PARTICIPANT_SCHEMA = Joi.object({
     .label("Data"),
 }).unknown(false);
 
-export const NODE_SCHEMA = Joi.object({
+export const POST_NODE_SCHEMA = Joi.object({
   data: Joi.object({
     attributes: Joi.object({
       baseUrl: Joi.string().uri().required().label("Base Url"),

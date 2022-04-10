@@ -56,24 +56,26 @@ import { createNode, getNodeById, getNodes } from "./brokers/nodes-broker";
 import { ec } from "elliptic";
 import jwt from "jsonwebtoken";
 import { getServerSecret } from "./environment-utils";
-import { ValidationErrorItem } from "joi";
+import { ValidationError, ValidationErrorItem } from "joi";
 import {
   AUTH_SCHEMA,
-  BLOCK_ID_SCHEMA,
-  BLOCK_SCHEMA,
-  NODE_SCHEMA,
-  PARTICIPANT_SCHEMA,
-  PENDING_TRANSACTION_SCHEMA,
-  SIGNED_TRANSACTION_SCHEMA,
-  PENDING_TRANSACTION_ID_SCHEMA,
-  BLOCK_TRANSACTION_ID_SCHEMA,
-  SIGNED_TRANSACTION_ID_SCHEMA,
-  PARTICIPANT_ID_SCHEMA,
-  NODE_ID_SCHEMA,
-  PAGE_NUMBER_SCHEMA,
-  PAGE_SIZE_SCHEMA,
-  PUBLIC_KEY_SCHEMA,
-  FROM_SCHEMA,
+  GET_BLOCK_PARAMETERS_SCHEMA,
+  GET_BLOCK_TRANSACTION_PARAMETERS_SCHEMA,
+  GET_BLOCK_TRANSACTIONS_PARAMETERS_SCHEMA,
+  GET_BLOCK_TRANSACTIONS_QUERY_SCHEMA,
+  GET_BLOCKS_QUERY_SCHEMA,
+  GET_NODE_PARAMETERS_SCHEMA,
+  GET_NODES_QUERY_SCHEMA,
+  GET_PARTICIPANT_PARAMETERS_SCHEMA,
+  GET_PARTICIPANTS_QUERY_SCHEMA,
+  GET_PENDING_TRANSACTION_PARAMETERS_SCHEMA,
+  GET_PENDING_TRANSACTIONS_QUERY_SCHEMA,
+  GET_SIGNED_TRANSACTION_PARAMETERS_SCHEMA,
+  GET_SIGNED_TRANSACTIONS_QUERY_SCHEMA,
+  POST_BLOCK_SCHEMA, POST_NODE_SCHEMA,
+  POST_PARTICIPANT_SCHEMA,
+  POST_PENDING_TRANSACTION_SCHEMA,
+  POST_SIGNED_TRANSACTION_SCHEMA,
 } from "./services/validation-schemas";
 
 // todo - dockerize the server
@@ -89,42 +91,76 @@ import {
 
 export let server: Server;
 
-const buildUnauthorizedError = (detail: string) => {
-  let authError = Boom.unauthorized();
-  const title = "Unauthorized";
-  authError.output.payload.errors = [
-    {
-      status: authError.output.statusCode,
-      title,
-      detail,
-    },
-  ];
-  delete authError.output.payload.statusCode;
-  delete authError.output.payload.error;
-  delete authError.output.payload.message;
-
-  return authError;
-};
-
-const buildPointer = (errorItem: ValidationErrorItem): string => {
-  let label = "";
-  for (const segment of errorItem.path) {
-    if (typeof segment === "object") {
-      continue;
-    }
-
-    if (typeof segment === "string") {
-      if (label) {
-        label += ".";
+const buildInvalidAttributeError = (errorItem: ValidationErrorItem) => {
+  const buildPointer = (errorItem: ValidationErrorItem): string => {
+    let label = "";
+    for (const segment of errorItem.path) {
+      if (typeof segment === "object") {
+        continue;
       }
 
-      label += segment;
-    } else {
-      label += `[${segment}]`;
-    }
-  }
+      if (typeof segment === "string") {
+        if (label) {
+          label += ".";
+        }
 
-  return label;
+        label += segment;
+      } else {
+        label += `[${segment}]`;
+      }
+    }
+
+    return label;
+  };
+
+  return {
+    status: "400",
+    title: "Invalid Attribute",
+    source: {
+      pointer: buildPointer(errorItem),
+    },
+    description: errorItem.message,
+  };
+};
+
+const buildInvalidQueryError = (errorItem: ValidationErrorItem) => {
+  return {
+    status: "400",
+    title: "Invalid Query Parameter",
+    description: errorItem.message,
+    parameter: errorItem.context.key,
+  };
+};
+
+const buildInvalidParameterError = (errorItem: ValidationErrorItem) => {
+  return {
+    status: "400",
+    title: "Invalid Path Parameter",
+    description: errorItem.message,
+  };
+};
+
+const buildUnauthorizedError = (detail: string) => {
+  return {
+    status: "401",
+    title: "Unauthorized",
+    detail,
+  };
+};
+
+const buildInternalServerError = () => {
+  return {
+    status: "500",
+    title: "Internal Server Error",
+  };
+};
+
+const buildNofFountError = (detail: string) => {
+  return {
+    status: "404",
+    title: "Not Found",
+    detail,
+  };
 };
 
 export const init = async (): Promise<Server> => {
@@ -147,17 +183,21 @@ export const init = async (): Promise<Server> => {
           "authorization"
         ] as string;
 
-        const bearerPrefix = "bearer ";
+        const BEARER_PREFIX = "bearer ";
 
         if (
           accessTokenWithBearer === undefined ||
-          accessTokenWithBearer.length < bearerPrefix.length
+          accessTokenWithBearer.length < BEARER_PREFIX.length
         ) {
-          throw buildUnauthorizedError("Authorization header is required.");
+          return h.response({
+            errors: buildUnauthorizedError("Authorization header is required."),
+          })
+            .code(401)
+            .takeover();
         }
 
         const accessToken = accessTokenWithBearer.substring(
-          bearerPrefix.length
+          BEARER_PREFIX.length
         );
 
         const serverSecret = getServerSecret();
@@ -166,7 +206,11 @@ export const init = async (): Promise<Server> => {
           jwt.verify(accessToken, serverSecret);
         } catch (error) {
           console.error(error.message);
-          throw buildUnauthorizedError("Unable to verify token.");
+          return h.response({
+            errors: buildUnauthorizedError("Unable to verify token."),
+          })
+            .code(401)
+            .takeover();
         }
 
         let participantId: string = undefined;
@@ -180,11 +224,19 @@ export const init = async (): Promise<Server> => {
           exp = decode.exp;
         } catch (error) {
           console.error(error.message);
-          throw buildUnauthorizedError("Unable to decode token.");
+          return h.response({
+            errors: buildUnauthorizedError("Unable to decode token."),
+          })
+            .code(401)
+            .takeover();
         }
 
         if (Math.floor(Date.now() / 1000) > exp) {
-          throw buildUnauthorizedError("Token is expired");
+          return h.response({
+            errors: buildUnauthorizedError("Token is expired"),
+          })
+            .code(401)
+            .takeover();
         }
 
         let participant: Participant;
@@ -195,15 +247,23 @@ export const init = async (): Promise<Server> => {
           );
         } catch (error) {
           console.error(error.message);
-          throw buildUnauthorizedError(
-            `Unable to get participant with id: ${participantId}.`
-          );
+          return h.response({
+            errors: buildUnauthorizedError(
+              `Unable to get participant with id: ${participantId}.`
+            ),
+          })
+            .code(401)
+            .takeover();
         }
 
         if (participant === undefined) {
-          throw buildUnauthorizedError(
-            `Participant with id: ${participantId} was not found.`
-          );
+          return h.response({
+            errors: buildUnauthorizedError(
+              `Participant with id: ${participantId} was not found.`
+            ),
+          })
+            .code(401)
+            .takeover();
         }
 
         return h.authenticated({ credentials: { participant } });
@@ -238,31 +298,32 @@ export const init = async (): Promise<Server> => {
   server.route({
     method: "POST",
     path: "/auth/token",
+    options: {
+      validate: {
+        payload: AUTH_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidAttributeError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
+    },
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { privateKey: string };
 
-      const { error, value } = AUTH_SCHEMA.validate(payload, {
-        abortEarly: false,
-      });
-
-      if (error !== undefined) {
-        return h
-          .response({
-            errors: error.details.map((errorItem: ValidationErrorItem) => ({
-              status: "400",
-              title: "Invalid Attribute",
-              source: {
-                pointer: buildPointer(errorItem),
-              },
-              description: errorItem.message,
-            })),
-          })
-          .code(400);
-      }
-
-      const validatedPayload = value;
-
-      const { privateKey } = validatedPayload;
+      const { privateKey } = payload;
 
       const keyPair: ec.KeyPair = getKeyPairFromPrivateKey(privateKey);
       const publicKey: string = keyPair.getPublic("hex");
@@ -277,12 +338,7 @@ export const init = async (): Promise<Server> => {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -305,12 +361,7 @@ export const init = async (): Promise<Server> => {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -324,81 +375,51 @@ export const init = async (): Promise<Server> => {
     path: "/blocks",
     options: {
       auth: "custom",
+      validate: {
+        query: GET_BLOCKS_QUERY_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidQueryError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
 
-      const pageNumberValidationResult =
-        PAGE_NUMBER_SCHEMA.validate(pageNumber);
-
-      if (pageNumberValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageNumberValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[number]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageNumber = pageNumberValidationResult.value;
-
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
-
-      if (pageSizeValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageSizeValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[size]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageSize = pageSizeValidationResult.value;
-
       let response: { count: number; rows: Block[] };
       try {
-        response = await getBlocks(
-          sequelizeClient,
-          validatedPageNumber,
-          validatedPageSize
-        );
+        response = await getBlocks(sequelizeClient, pageNumber, pageSize);
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
 
       const { count, rows } = response;
 
-      return await buildBlocksSerializer(
-        count,
-        validatedPageNumber,
-        validatedPageSize
-      ).serialize(rows);
+      return await buildBlocksSerializer(count, pageNumber, pageSize).serialize(
+        rows
+      );
     },
   });
 
@@ -407,41 +428,38 @@ export const init = async (): Promise<Server> => {
     path: "/blocks/{blockId}",
     options: {
       auth: "custom",
+      validate: {
+        params: GET_BLOCK_PARAMETERS_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidParameterError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const { blockId } = request.params;
 
-      const blockIdValidationResult = BLOCK_ID_SCHEMA.validate(blockId);
-
-      if (blockIdValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: blockIdValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Path Parameter",
-                description: errorItem.message,
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedBlockId = blockIdValidationResult.value;
-
       let block: Block;
       try {
-        block = await getBlockById(sequelizeClient, validatedBlockId);
+        block = await getBlockById(sequelizeClient, blockId);
       } catch (error) {
-        console.error(error.message);
+        console.error;
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -450,11 +468,7 @@ export const init = async (): Promise<Server> => {
         return h
           .response({
             errors: [
-              {
-                status: "404",
-                title: "Not Found",
-                detail: `A block with id: ${validatedBlockId} was not found.`,
-              },
+              buildNofFountError(`A block with id: ${blockId} was not found.`),
             ],
           })
           .code(404);
@@ -469,41 +483,51 @@ export const init = async (): Promise<Server> => {
     path: "/blocks",
     options: {
       auth: "custom",
+      validate: {
+        payload: POST_BLOCK_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidAttributeError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
-      const payload = request.payload as { data: ApiData };
-
-      const { error, value } = BLOCK_SCHEMA.validate(payload, {
-        abortEarly: false,
-      });
-
-      if (error !== undefined) {
-        return h
-          .response({
-            errors: error.details.map((errorItem: ValidationErrorItem) => ({
-              status: "400",
-              title: "Invalid Attribute",
-              source: {
-                pointer: buildPointer(errorItem),
-              },
-              description: errorItem.message,
-            })),
-          })
-          .code(400);
-      }
-
-      const validatedPayload = value;
+      const payload = request.payload as {
+        data: {
+          id: string;
+          attributes: Record<string, string | number | boolean | object>;
+          relationships: {
+            transactions: Array<{ data: ApiData }>;
+          };
+        };
+      };
 
       const participant = request.auth.credentials.participant as Participant;
+
       const minerPublicKey = participant.key.public;
 
       const newBlock = {
-        id: validatedPayload.data.id,
-        ...validatedPayload.data.attributes,
-        transactions: validatedPayload.data.relationships.transactions.map((transactionData: { data: ApiData }) => ({
-          id: transactionData.data.id,
-          ...transactionData.data.attributes,
-        })),
+        id: payload.data.id,
+        ...payload.data.attributes,
+        transactions: payload.data.relationships.transactions.map(
+          (transactionData: { data: ApiData }) => ({
+            id: transactionData.data.id,
+            ...transactionData.data.attributes,
+          })
+        ),
       } as Block;
 
       let createdBlock: Block;
@@ -517,12 +541,7 @@ export const init = async (): Promise<Server> => {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -540,114 +559,52 @@ export const init = async (): Promise<Server> => {
     path: "/pending-transactions",
     options: {
       auth: "custom",
+      validate: {
+        query: GET_PENDING_TRANSACTIONS_QUERY_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidQueryError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
 
-      const pageNumberValidationResult =
-        PAGE_NUMBER_SCHEMA.validate(pageNumber);
-
-      if (pageNumberValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageNumberValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[number]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageNumber = pageNumberValidationResult.value;
-
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
-
-      if (pageSizeValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageSizeValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[size]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageSize = pageSizeValidationResult.value;
-
       const fromFilter: string = request.query["filter[from]"];
 
-      const fromFilterValidationResult = FROM_SCHEMA.validate(fromFilter);
-
-      if (fromFilterValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: fromFilterValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "filter[from]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedFromFilter = fromFilterValidationResult.value;
-
       const toFilter: string = request.query["filter[to]"];
-
-      const toFilterValidationResult = FROM_SCHEMA.validate(toFilter);
-
-      if (toFilterValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: toFilterValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "filter[to]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedToFilter = toFilterValidationResult.value;
 
       let response: { count: number; rows: Transaction[] };
       try {
         response = await getPendingTransactions(
           sequelizeClient,
-          validatedPageNumber,
-          validatedPageSize,
-          validatedFromFilter,
-          validatedToFilter
+          pageNumber,
+          pageSize,
+          fromFilter,
+          toFilter
         );
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -656,8 +613,8 @@ export const init = async (): Promise<Server> => {
 
       return await buildPendingTransactionsSerializer(
         count,
-        validatedPageNumber,
-        validatedPageSize
+        pageNumber,
+        pageSize
       ).serialize(rows);
     },
   });
@@ -667,46 +624,41 @@ export const init = async (): Promise<Server> => {
     path: "/pending-transactions/{pendingTransactionId}",
     options: {
       auth: "custom",
+      validate: {
+        params: GET_PENDING_TRANSACTION_PARAMETERS_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidParameterError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const { pendingTransactionId } = request.params;
-
-      const pendingTransactionIdValidationResult =
-        PENDING_TRANSACTION_ID_SCHEMA.validate(pendingTransactionId);
-
-      if (pendingTransactionIdValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pendingTransactionIdValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Path Parameter",
-                description: errorItem.message,
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPendingTransactionId =
-        pendingTransactionIdValidationResult.value;
 
       let pendingTransaction: Transaction;
       try {
         pendingTransaction = await getPendingTransactionById(
           sequelizeClient,
-          validatedPendingTransactionId
+          pendingTransactionId
         );
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -715,11 +667,9 @@ export const init = async (): Promise<Server> => {
         return h
           .response({
             errors: [
-              {
-                status: "404",
-                title: "Not Found",
-                detail: `A pending transaction with id: ${validatedPendingTransactionId} was not found.`,
-              },
+              buildNofFountError(
+                `A pending transaction with id: ${pendingTransactionId} was not found.`
+              ),
             ],
           })
           .code(404);
@@ -734,34 +684,33 @@ export const init = async (): Promise<Server> => {
     path: "/pending-transactions",
     options: {
       auth: "custom",
+      validate: {
+        payload: POST_PENDING_TRANSACTION_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidAttributeError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
-      const { error, value } = PENDING_TRANSACTION_SCHEMA.validate(payload, {
-        abortEarly: false,
-      });
-
-      if (error !== undefined) {
-        return h
-          .response({
-            errors: error.details.map((errorItem: ValidationErrorItem) => ({
-              status: "400",
-              title: "Invalid Attribute",
-              source: {
-                pointer: buildPointer(errorItem),
-              },
-              description: errorItem.message,
-            })),
-          })
-          .code(400);
-      }
-
-      const validatedPayload = value;
-
       const newPendingTransaction = {
-        id: validatedPayload.data.id,
-        ...validatedPayload.data.attributes,
+        id: payload.data.id,
+        ...payload.data.attributes,
       } as Transaction;
 
       try {
@@ -778,12 +727,7 @@ export const init = async (): Promise<Server> => {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -797,70 +741,46 @@ export const init = async (): Promise<Server> => {
     path: "/signed-transactions",
     options: {
       auth: "custom",
+      validate: {
+        query: GET_SIGNED_TRANSACTIONS_QUERY_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidQueryError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
 
-      const pageNumberValidationResult =
-        PAGE_NUMBER_SCHEMA.validate(pageNumber);
-
-      if (pageNumberValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageNumberValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[number]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageNumber = pageNumberValidationResult.value;
-
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
-
-      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
-
-      if (pageSizeValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageSizeValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[size]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageSize = pageSizeValidationResult.value;
 
       let response: { count: number; rows: Transaction[] };
       try {
         response = await getSignedTransactions(
           sequelizeClient,
-          validatedPageNumber,
-          validatedPageSize
+          pageNumber,
+          pageSize
         );
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -869,8 +789,8 @@ export const init = async (): Promise<Server> => {
 
       return await buildSignedTransactionsSerializer(
         count,
-        validatedPageNumber,
-        validatedPageSize
+        pageNumber,
+        pageSize
       ).serialize(rows);
     },
   });
@@ -880,46 +800,41 @@ export const init = async (): Promise<Server> => {
     path: "/signed-transactions/{signedTransactionId}",
     options: {
       auth: "custom",
+      validate: {
+        params: GET_SIGNED_TRANSACTION_PARAMETERS_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidParameterError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const { signedTransactionId } = request.params;
-
-      const signedTransactionIdValidationResult =
-        SIGNED_TRANSACTION_ID_SCHEMA.validate(signedTransactionId);
-
-      if (signedTransactionIdValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: signedTransactionIdValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Path Parameter",
-                description: errorItem.message,
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedSignedTransactionId =
-        signedTransactionIdValidationResult.value;
 
       let signedTransaction: Transaction;
       try {
         signedTransaction = await getSignedTransactionById(
           sequelizeClient,
-          validatedSignedTransactionId
+          signedTransactionId
         );
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -928,11 +843,9 @@ export const init = async (): Promise<Server> => {
         return h
           .response({
             errors: [
-              {
-                status: "404",
-                title: "Not Found",
-                detail: `A signed transaction with id: ${validatedSignedTransactionId} was not found.`,
-              },
+              buildNofFountError(
+                `A signed transaction with id: ${signedTransactionId} was not found.`
+              ),
             ],
           })
           .code(404);
@@ -947,34 +860,33 @@ export const init = async (): Promise<Server> => {
     path: "/signed-transactions",
     options: {
       auth: "custom",
+      validate: {
+        payload: POST_SIGNED_TRANSACTION_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) =>
+                buildInvalidAttributeError(errorItem)
+              ),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
-      const { error, value } = SIGNED_TRANSACTION_SCHEMA.validate(payload, {
-        abortEarly: false,
-      });
-
-      if (error !== undefined) {
-        return h
-          .response({
-            errors: error.details.map((errorItem: ValidationErrorItem) => ({
-              status: "400",
-              title: "Invalid Attribute",
-              source: {
-                pointer: buildPointer(errorItem),
-              },
-              description: errorItem.message,
-            })),
-          })
-          .code(400);
-      }
-
-      const validatedPayload = value;
-
       const newSignedTransaction = {
-        id: validatedPayload.data.id,
-        ...validatedPayload.data.attributes,
+        id: payload.data.id,
+        ...payload.data.attributes,
       } as Transaction;
 
       let createdSignedTransaction: Transaction;
@@ -987,12 +899,7 @@ export const init = async (): Promise<Server> => {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -1012,85 +919,49 @@ export const init = async (): Promise<Server> => {
     path: "/blocks/{blockId}/transactions",
     options: {
       auth: "custom",
+      validate: {
+        query: GET_BLOCK_TRANSACTIONS_QUERY_SCHEMA,
+        params: GET_BLOCK_TRANSACTIONS_PARAMETERS_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+          request: Request,
+          h: ResponseToolkit,
+          error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+            .response({
+              errors: error.details.map((errorItem: ValidationErrorItem) => {
+                if (errorItem.context.key === "blockId") {
+                  return buildInvalidParameterError(errorItem);
+                }
+                return buildInvalidQueryError(errorItem);
+              }),
+            })
+            .code(error.output.statusCode)
+            .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const { blockId } = request.params;
+
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
-
-      const pageNumberValidationResult =
-        PAGE_NUMBER_SCHEMA.validate(pageNumber);
-
-      if (pageNumberValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageNumberValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[number]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageNumber = pageNumberValidationResult.value;
 
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
-
-      if (pageSizeValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageSizeValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[size]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageSize = pageSizeValidationResult.value;
-
-      const blockIdValidationResult = BLOCK_ID_SCHEMA.validate(blockId);
-
-      if (blockIdValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: blockIdValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Path Parameter",
-                description: errorItem.message,
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedBlockId = blockIdValidationResult.value;
-
       let block: Block;
+
       try {
-        block = await getBlockById(sequelizeClient, validatedBlockId);
+        block = await getBlockById(sequelizeClient, blockId);
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -1099,11 +970,7 @@ export const init = async (): Promise<Server> => {
         return h
           .response({
             errors: [
-              {
-                status: "404",
-                title: "Not Found",
-                detail: `A block with id: ${validatedBlockId} was not found.`,
-              },
+              buildNofFountError(`A block with id: ${blockId} was not found.`),
             ],
           })
           .code(404);
@@ -1113,20 +980,15 @@ export const init = async (): Promise<Server> => {
       try {
         response = await getBlockTransactions(
           sequelizeClient,
-          validatedPageNumber,
-          validatedPageSize,
+          pageNumber,
+          pageSize,
           blockId
         );
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -1136,8 +998,8 @@ export const init = async (): Promise<Server> => {
       return await buildBlockTransactionsSerializer(
         block,
         count,
-        validatedPageNumber,
-        validatedPageSize
+        pageNumber,
+        pageSize
       ).serialize(rows);
     },
   });
@@ -1147,61 +1009,39 @@ export const init = async (): Promise<Server> => {
     path: "/blocks/{blockId}/transactions/{blockTransactionId}",
     options: {
       auth: "custom",
+      validate: {
+        params: GET_BLOCK_TRANSACTION_PARAMETERS_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+            request: Request,
+            h: ResponseToolkit,
+            error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+              .response({
+                errors: error.details.map((errorItem: ValidationErrorItem) =>
+                    buildInvalidParameterError(errorItem)
+                ),
+              })
+              .code(error.output.statusCode)
+              .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const { blockId, blockTransactionId } = request.params;
 
-      const blockIdValidationResult = BLOCK_ID_SCHEMA.validate(blockId);
-
-      if (blockIdValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: blockIdValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Path Parameter",
-                description: errorItem.message,
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedBlockId = blockIdValidationResult.value;
-
-      const blockTransactionIdValidationResult =
-        BLOCK_TRANSACTION_ID_SCHEMA.validate(blockTransactionId);
-
-      if (blockTransactionIdValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: blockTransactionIdValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Path Parameter",
-                description: errorItem.message,
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedBlockTransactionId =
-        blockTransactionIdValidationResult.value;
-
       let block: Block;
+
       try {
-        block = await getBlockById(sequelizeClient, validatedBlockId);
+        block = await getBlockById(sequelizeClient, blockId);
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -1210,11 +1050,7 @@ export const init = async (): Promise<Server> => {
         return h
           .response({
             errors: [
-              {
-                status: "404",
-                title: "Not Found",
-                detail: `A block with id: ${validatedBlockId} was not found.`,
-              },
+              buildNofFountError(`A block with id: ${blockId} was not found.`),
             ],
           })
           .code(404);
@@ -1224,19 +1060,14 @@ export const init = async (): Promise<Server> => {
       try {
         blockTransaction = await getBlockTransactionById(
           sequelizeClient,
-          validatedBlockId,
-          validatedBlockTransactionId
+          blockId,
+          blockTransactionId
         );
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -1245,11 +1076,9 @@ export const init = async (): Promise<Server> => {
         return h
           .response({
             errors: [
-              {
-                status: "404",
-                title: "Not Found",
-                detail: `A block transaction with id: ${validatedBlockTransactionId} was not found.`,
-              },
+              buildNofFountError(
+                `A block transaction with id: ${blockTransactionId} was not found.`
+              ),
             ],
           })
           .code(404);
@@ -1266,104 +1095,58 @@ export const init = async (): Promise<Server> => {
     path: "/participants",
     options: {
       auth: "custom",
+      validate: {
+        query: GET_PARTICIPANTS_QUERY_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+            request: Request,
+            h: ResponseToolkit,
+            error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+              .response({
+                errors: error.details.map((errorItem: ValidationErrorItem) =>
+                    buildInvalidQueryError(errorItem)
+                ),
+              })
+              .code(error.output.statusCode)
+              .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
 
-      const pageNumberValidationResult =
-        PAGE_NUMBER_SCHEMA.validate(pageNumber);
-
-      if (pageNumberValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageNumberValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[number]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageNumber = pageNumberValidationResult.value;
-
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
-
-      if (pageSizeValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageSizeValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[size]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageSize = pageSizeValidationResult.value;
-
       const publicKeyFilter: string = request.query["filter[publicKey]"];
-
-      const publicKeyFilterValidationResult =
-        PUBLIC_KEY_SCHEMA.validate(publicKeyFilter);
-
-      if (publicKeyFilterValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: publicKeyFilterValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "filter[publicKey]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPublicKeyFilter = publicKeyFilterValidationResult.value;
 
       let response: { count: number; rows: Participant[] };
       try {
         response = await getParticipants(
           sequelizeClient,
-          validatedPageNumber,
-          validatedPageSize,
-          validatedPublicKeyFilter
+          pageNumber,
+          pageSize,
+          publicKeyFilter
         );
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
 
       const { count, rows } = response;
 
-      return buildParticipantsSerializer(
-        count,
-        validatedPageNumber,
-        validatedPageSize
-      ).serialize(rows);
+      return buildParticipantsSerializer(count, pageNumber, pageSize).serialize(
+        rows
+      );
     },
   });
 
@@ -1372,45 +1155,38 @@ export const init = async (): Promise<Server> => {
     path: "/participants/{participantId}",
     options: {
       auth: "custom",
+      validate: {
+        params: GET_PARTICIPANT_PARAMETERS_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+            request: Request,
+            h: ResponseToolkit,
+            error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+              .response({
+                errors: error.details.map((errorItem: ValidationErrorItem) =>
+                    buildInvalidParameterError(errorItem)
+                ),
+              })
+              .code(error.output.statusCode)
+              .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const { participantId } = request.params;
 
-      const participantIdValidationResult =
-        PARTICIPANT_ID_SCHEMA.validate(participantId);
-
-      if (participantIdValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: participantIdValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Path Parameter",
-                description: errorItem.message,
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedParticipantId = participantIdValidationResult.value;
-
       let participant: Participant;
       try {
-        participant = await getParticipantById(
-          sequelizeClient,
-          validatedParticipantId
-        );
+        participant = await getParticipantById(sequelizeClient, participantId);
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -1419,11 +1195,9 @@ export const init = async (): Promise<Server> => {
         return h
           .response({
             errors: [
-              {
-                status: "404",
-                title: "Not Found",
-                detail: `A participant with id: ${validatedParticipantId} was not found.`,
-              },
+              buildNofFountError(
+                `A participant with id: ${participantId} was not found.`
+              ),
             ],
           })
           .code(404);
@@ -1438,38 +1212,37 @@ export const init = async (): Promise<Server> => {
     path: "/participants",
     options: {
       auth: "custom",
+      validate: {
+        payload: POST_PARTICIPANT_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+            request: Request,
+            h: ResponseToolkit,
+            error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+              .response({
+                errors: error.details.map((errorItem: ValidationErrorItem) =>
+                    buildInvalidAttributeError(errorItem)
+                ),
+              })
+              .code(error.output.statusCode)
+              .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - check for dupe participants
 
-      const { error, value } = PARTICIPANT_SCHEMA.validate(payload, {
-        abortEarly: false,
-      });
-
-      const validatedPayload = value;
-
-      if (error !== undefined) {
-        return h
-          .response({
-            errors: error.details.map((errorItem: ValidationErrorItem) => ({
-              status: "400",
-              title: "Invalid Attribute",
-              source: {
-                pointer: buildPointer(errorItem),
-              },
-              description: errorItem.message,
-            })),
-          })
-          .code(400);
-      }
-
       const participantKey = generateParticipantKey();
 
       const newParticipant = {
-        id: validatedPayload.data.id,
-        ...validatedPayload.data.attributes,
+        id: payload.data.id,
+        ...payload.data.attributes,
         key: { public: participantKey.public },
       };
 
@@ -1483,12 +1256,7 @@ export const init = async (): Promise<Server> => {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -1512,81 +1280,49 @@ export const init = async (): Promise<Server> => {
     path: "/nodes",
     options: {
       auth: "custom",
+      validate: {
+        query: GET_NODES_QUERY_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+            request: Request,
+            h: ResponseToolkit,
+            error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+              .response({
+                errors: error.details.map((errorItem: ValidationErrorItem) =>
+                    buildInvalidQueryError(errorItem)
+                ),
+              })
+              .code(error.output.statusCode)
+              .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const pageNumber: number =
         Number(request.query["page[number]"]) || FIRST_PAGE;
 
-      const pageNumberValidationResult =
-        PAGE_NUMBER_SCHEMA.validate(pageNumber);
-
-      if (pageNumberValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageNumberValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[number]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageNumber = pageNumberValidationResult.value;
-
       const pageSize: number =
         Number(request.query["page[size]"]) || DEFAULT_PAGE_SIZE;
 
-      const pageSizeValidationResult = PAGE_SIZE_SCHEMA.validate(pageSize);
-
-      if (pageSizeValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: pageSizeValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Query Parameter",
-                description: errorItem.message,
-                parameter: "page[size]",
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedPageSize = pageSizeValidationResult.value;
-
       let response: { count: number; rows: Node[] };
       try {
-        response = await getNodes(
-          sequelizeClient,
-          validatedPageNumber,
-          validatedPageSize
-        );
+        response = await getNodes(sequelizeClient, pageNumber, pageSize);
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
 
       const { count, rows } = response;
 
-      return buildNodesSerializer(
-        count,
-        validatedPageNumber,
-        validatedPageSize
-      ).serialize(rows);
+      return buildNodesSerializer(count, pageNumber, pageSize).serialize(rows);
     },
   });
 
@@ -1595,41 +1331,38 @@ export const init = async (): Promise<Server> => {
     path: "/nodes/{nodeId}",
     options: {
       auth: "custom",
+      validate: {
+        params: GET_NODE_PARAMETERS_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+            request: Request,
+            h: ResponseToolkit,
+            error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+              .response({
+                errors: error.details.map((errorItem: ValidationErrorItem) =>
+                    buildInvalidParameterError(errorItem)
+                ),
+              })
+              .code(error.output.statusCode)
+              .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const { nodeId } = request.params;
 
-      const nodeIdValidationResult = NODE_ID_SCHEMA.validate(nodeId);
-
-      if (nodeIdValidationResult.error !== undefined) {
-        return h
-          .response({
-            errors: nodeIdValidationResult.error.details.map(
-              (errorItem: ValidationErrorItem) => ({
-                status: "400",
-                title: "Invalid Path Parameter",
-                description: errorItem.message,
-              })
-            ),
-          })
-          .code(400);
-      }
-
-      const validatedNodeId = nodeIdValidationResult.value;
-
       let node: Node;
       try {
-        node = await getNodeById(sequelizeClient, validatedNodeId);
+        node = await getNodeById(sequelizeClient, nodeId);
       } catch (error) {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
@@ -1638,11 +1371,7 @@ export const init = async (): Promise<Server> => {
         return h
           .response({
             errors: [
-              {
-                status: "404",
-                title: "Not Found",
-                detail: `A node with id: ${validatedNodeId} was not found.`,
-              },
+              buildNofFountError(`A node with id: ${nodeId} was not found.`),
             ],
           })
           .code(404);
@@ -1657,38 +1386,37 @@ export const init = async (): Promise<Server> => {
     path: "/nodes",
     options: {
       auth: "custom",
+      validate: {
+        payload: POST_NODE_SCHEMA,
+        options: {
+          abortEarly: false,
+        },
+        failAction: (
+            request: Request,
+            h: ResponseToolkit,
+            error: (Boom.Boom & ValidationError) | undefined
+        ) => {
+          return h
+              .response({
+                errors: error.details.map((errorItem: ValidationErrorItem) =>
+                    buildInvalidAttributeError(errorItem)
+                ),
+              })
+              .code(error.output.statusCode)
+              .takeover();
+        },
+      },
     },
     handler: async (request: Request, h: ResponseToolkit) => {
       const payload = request.payload as { data: ApiData };
 
       // todo - check for dupe nodes
 
-      const { error, value } = NODE_SCHEMA.validate(payload, {
-        abortEarly: false,
-      });
-
-      if (error !== undefined) {
-        return h
-          .response({
-            errors: error.details.map((errorItem: ValidationErrorItem) => ({
-              status: "400",
-              title: "Invalid Attribute",
-              source: {
-                pointer: buildPointer(errorItem),
-              },
-              description: errorItem.message,
-            })),
-          })
-          .code(400);
-      }
-
-      const validatedPayload = value;
-
       // todo - once validated, sync up with the new node
 
       const newNode: Node = {
-        id: validatedPayload.data.id,
-        ...validatedPayload.data.attributes,
+        id: payload.data.id,
+        ...payload.data.attributes,
       } as Node;
 
       let createdNode: Node;
@@ -1698,12 +1426,7 @@ export const init = async (): Promise<Server> => {
         console.error(error.message);
         return h
           .response({
-            errors: [
-              {
-                status: "500",
-                title: "Internal Server Error",
-              },
-            ],
+            errors: [buildInternalServerError()],
           })
           .code(500);
       }
