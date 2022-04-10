@@ -81,11 +81,10 @@ import {
 
 // todo - unit tests
 // todo - mobile app
-// todo - register new volunteer, charity and node participant
 // todo - add update participant
 // todo - add update node
+// todo - add update pending transactions - for canceling them
 // todo - add a organization resource and a participant-organization association (name, address, email, url, phone number, role, etc.)
-// todo - update pending transactions - for canceling them
 // todo - add github contribution and pull request template files
 
 export let server: Server;
