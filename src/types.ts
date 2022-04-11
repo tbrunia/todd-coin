@@ -4,6 +4,7 @@ export interface ApiSettings {
   apiHost: string;
   apiPort: number;
   apiBaseUrl: string;
+  hostMaintainerId: string;
 }
 
 export interface DatabaseSettings {
@@ -12,6 +13,12 @@ export interface DatabaseSettings {
   password: string;
   dbHost: string;
   dbPort: number;
+}
+
+export interface ApiData<T> {
+  id: string;
+  attributes: Omit<T, "id">;
+  relationships: Record<string, ApiData<any> | Array<ApiData<any>>>;
 }
 
 export interface ParticipantKey {
@@ -63,10 +70,4 @@ export interface Node {
   createdAt?: string;
   updatedAt?: string;
   baseUrl: string;
-}
-
-export interface ApiData {
-  id: string;
-  attributes: Record<string, string | number | boolean | object>;
-  relationships: Record<string, object | Array<object>>;
 }

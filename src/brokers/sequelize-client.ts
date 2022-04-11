@@ -3,7 +3,7 @@ import { Block, Participant, Transaction } from "../types";
 import {
   createGenesisBlock,
   createGenesisParticipant,
-} from "../services/block-utils";
+} from "../utils/block-utils";
 
 const { Client } = require("pg");
 

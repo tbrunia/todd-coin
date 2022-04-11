@@ -1,5 +1,14 @@
 import { Block, Participant, Roles, Transaction } from "../types";
-import { DIFFICULTY, GENESIS_REWARD } from "../constants";
+import {
+  DIFFICULTY,
+  GENESIS_BLOCK_ID,
+  GENESIS_HASH,
+  GENESIS_NONCE,
+  GENESIS_PARTICIPANT_ID,
+  GENESIS_PARTICIPANT_PUBLIC_KEY,
+  GENESIS_REWARD,
+  GENESIS_TRANSACTION_ID,
+} from "../constants";
 import {
   calculateTransactionHash,
   isSignedTransactionValid,
@@ -21,15 +30,6 @@ export const calculateBlockHash = (block: Omit<Block, "hash">): string => {
 
   return SHA256(parts).toString();
 };
-
-const GENESIS_HASH =
-  "0000000000000000000000000000000000000000000000000000000000000000";
-const GENESIS_PARTICIPANT_ID = "0dd9bf1d-544c-4d9a-beb3-8bc0d8024db4";
-const GENESIS_PARTICIPANT_PUBLIC_KEY =
-  "049976c498d31064539767b4ca5e7383e9c2d1f9305bccdcd476e0e8c24872dfa7d1940bf433d6a431c23813594882126d49b21ebadd1fe00ef50dd8262000d73b";
-const GENESIS_BLOCK_ID = "6daed5b3-86fb-4c68-945f-87fac9cbe846";
-const GENESIS_TRANSACTION_ID = "13b155a6-da09-4e9c-ba13-9c78bdc87443";
-const GENESIS_NONCE = 0;
 
 export const createGenesisBlock = (): Block => {
   const genesisBlockNetHash: Omit<Block, "hash"> = {

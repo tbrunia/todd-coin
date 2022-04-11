@@ -2,13 +2,10 @@
 
 import yargs, { ArgumentsCamelCase } from "yargs";
 import { hideBin } from "yargs/helpers";
-import {
-  getParticipantBalance,
-  isChainValid,
-} from "./services/blockchain-utils";
-import { signTransaction } from "./services/transaction-utils";
+import { getParticipantBalance, isChainValid } from "./utils/blockchain-utils";
+import { signTransaction } from "./utils/transaction-utils";
 import { ApiData, Block, Participant, Transaction } from "./types";
-import { mineNextBlock } from "./services/block-utils";
+import { mineNextBlock } from "./utils/block-utils";
 import axios, { AxiosResponse } from "axios";
 import _ from "lodash";
 import {
@@ -18,31 +15,33 @@ import {
 } from "./constants";
 
 const getBlockTransactions = async (
-  blockData: ApiData
+  blockData: ApiData<Block>
 ): Promise<Transaction[]> => {
   const transactionsResponse: AxiosResponse<{
-    data: ApiData[];
+    data: ApiData<Transaction>[];
   }> = await axios.get(
     `http://localhost:3000/blocks/${blockData.id}/transactions?page[number]=${FIRST_PAGE}&page[size]=${MAX_TRANSACTIONS_PER_BLOCK}`
   );
 
-  return transactionsResponse.data.data.map((transactionData: ApiData) => ({
-    id: transactionData.id,
-    ...transactionData.attributes,
-  })) as Transaction[];
+  return transactionsResponse.data.data.map(
+    (transactionData: ApiData<Transaction>) => ({
+      id: transactionData.id,
+      ...transactionData.attributes,
+    })
+  ) as Transaction[];
 };
 
 // todo - paginate blocks
 
 const getBlocks = async (): Promise<Block[]> => {
   const blocksResponse: AxiosResponse<{
-    data: ApiData[];
+    data: ApiData<Block>[];
   }> = await axios.get(
     `http://localhost:3000/blocks?page[number]=0&page[size]=${DEFAULT_PAGE_SIZE}`
   );
 
   return (await Promise.all(
-    blocksResponse.data.data.map(async (blockData: ApiData) => {
+    blocksResponse.data.data.map(async (blockData: ApiData<Block>) => {
       const transactions = await getBlockTransactions(blockData);
 
       return {
@@ -57,9 +56,8 @@ const getBlocks = async (): Promise<Block[]> => {
 const getParticipantById = async (
   participantId: string
 ): Promise<Participant> => {
-  const participantResponse: AxiosResponse<{ data: ApiData }> = await axios.get(
-    `http://localhost:3000/participants/${participantId}`
-  );
+  const participantResponse: AxiosResponse<{ data: ApiData<Participant> }> =
+    await axios.get(`http://localhost:3000/participants/${participantId}`);
   return {
     id: participantResponse.data.data.id,
     ...participantResponse.data.data.attributes,
@@ -68,14 +66,16 @@ const getParticipantById = async (
 
 const getSomeSignedTransactionsToMine = async (): Promise<Transaction[]> => {
   const signedTransactionsResponse: AxiosResponse<{
-    data: ApiData[];
+    data: ApiData<Transaction>[];
   }> = await axios.get(
     `http://localhost:3000/signed-transactions?page[number]=0&page[size]=${MAX_TRANSACTIONS_PER_BLOCK}`
   );
-  return signedTransactionsResponse.data.data.map((data: ApiData) => ({
-    id: data.id,
-    ...data.attributes,
-  })) as Transaction[];
+  return signedTransactionsResponse.data.data.map(
+    (data: ApiData<Transaction>) => ({
+      id: data.id,
+      ...data.attributes,
+    })
+  ) as Transaction[];
 };
 
 const getPendingTransactionById = async (

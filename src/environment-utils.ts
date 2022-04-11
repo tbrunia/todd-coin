@@ -1,4 +1,5 @@
 import { ApiSettings, DatabaseSettings } from "./types";
+import { GENESIS_PARTICIPANT_ID } from "./constants";
 
 export const getDatabaseSettings = (): DatabaseSettings => {
   const database = process.env.DB_NAME || "todd-coin";
@@ -17,6 +18,8 @@ export const getApiSettings = (): ApiSettings => {
   const apiPort = Number(process.env.API_PORT) || 3000;
   const apiProtocol = process.env.API_PROTOCOL || "http";
   const apiBaseUrl = process.env.API_BASE_URL || "http://localhost:3000";
+  const hostMaintainerId =
+    process.env.HOST_MAINTAINER_ID || GENESIS_PARTICIPANT_ID;
 
   return {
     jwtSecretKey,
@@ -24,5 +27,6 @@ export const getApiSettings = (): ApiSettings => {
     apiHost,
     apiPort,
     apiBaseUrl,
+    hostMaintainerId,
   };
 };
